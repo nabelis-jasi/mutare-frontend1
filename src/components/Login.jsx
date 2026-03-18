@@ -1,152 +1,61 @@
 import { useState } from "react";
+import { supabase } from "../supabaseClient";
 
 export default function Login({ onLogin }) {
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [selectedRole, setSelectedRole] = useState(null);
 
-  // Predefined credentials for each role
-  const credentials = {
-    "field-operator": {
-      username: "operator@wastewater.com",
-      password: "operator123"
-    },
-    "field-collector": {
-      username: "collector@wastewater.com",
-      password: "collector123"
-    },
-    developer: {
-      username: "developer@wastewater.com",
-      password: "developer123"
-    }
-  };
-
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
     setError("");
 
-    // Trim and normalize inputs
-    const trimmedUsername = username.trim().toLowerCase();
-    const trimmedPassword = password.trim();
+    // Login via Supabase
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    });
 
-    // Check credentials against all roles
-    for (const [role, creds] of Object.entries(credentials)) {
-      if (
-        trimmedUsername === creds.username.toLowerCase() &&
-        trimmedPassword === creds.password
-      ) {
-        onLogin(role);
-        return;
-      }
+    if (error) {
+      setError(error.message);
+      return;
     }
 
-    setError("Invalid credentials. Please try again.");
+    // Check if user is approved
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", data.user.id)
+      .single();
+
+    if (!profile.is_active) {
+      setError("Your account is not approved yet.");
+      return;
+    }
+
+    // Store JWT and role
+    localStorage.setItem("access_token", data.session.access_token);
+    localStorage.setItem("role", profile.role);
+
+    // Notify parent
+    onLogin(profile.role);
   };
 
-  // Role selector view
-  if (!selectedRole) {
-    return (
-      <div className="login-container">
-        <div className="role-selection-box">
-          <h1 className="login-title">WASTEWATER GIS</h1>
-          <h2 className="role-prompt">Who are you?</h2>
-          <p className="role-subtitle">Please select your role to continue</p>
-
-          <div className="role-buttons">
-            <button
-              className="role-select-btn role-btn-operator"
-              onClick={() => setSelectedRole("field-operator")}
-            >
-              <span className="role-icon">👤</span>
-              <span className="role-name">Field Operator</span>
-            </button>
-
-            <button
-              className="role-select-btn role-btn-collector"
-              onClick={() => setSelectedRole("field-collector")}
-            >
-              <span className="role-icon">📋</span>
-              <span className="role-name">Field Collector</span>
-            </button>
-
-            <button
-              className="role-select-btn role-btn-developer"
-              onClick={() => setSelectedRole("developer")}
-            >
-              <span className="role-icon">💻</span>
-              <span className="role-name">Developer</span>
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Login view
   return (
     <div className="login-container">
-      <div className="login-box">
-        <button
-          className="back-button"
-          onClick={() => {
-            setSelectedRole(null);
-            setUsername("");
-            setPassword("");
-            setError("");
-          }}
-        >
-          ← Back
-        </button>
-
-        <h1 className="login-title">WASTEWATER GIS</h1>
-
-        <form onSubmit={handleLogin} className="login-form">
-          <h2>Login as {selectedRole.replace("-", " ")}</h2>
-
-          <div className="form-group">
-            <label htmlFor="username">Email:</label>
-            <input
-              id="username"
-              type="email"
-              placeholder="Enter email"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              required
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="password">Password:</label>
-            <input
-              id="password"
-              type="password"
-              placeholder="Enter password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </div>
-
-          <button type="submit" className="login-button">
-            Sign In
-          </button>
-
-          {error && <p className="error-message">{error}</p>}
-        </form>
-
-        <div className="credentials-info">
-          <h3>Your Credentials:</h3>
-          <div className="role-cred">
-            <strong>Email:</strong>
-            <p>{credentials[selectedRole].username}</p>
-          </div>
-          <div className="role-cred">
-            <strong>Password:</strong>
-            <p>{credentials[selectedRole].password}</p>
-          </div>
+      <h1>WASTEWATER GIS</h1>
+      <form onSubmit={handleLogin}>
+        <div>
+          <label>Email:</label>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
         </div>
-      </div>
+        <div>
+          <label>Password:</label>
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+        </div>
+        <button type="submit">Login</button>
+      </form>
+      {error && <p style={{ color: "red" }}>{error}</p>}
     </div>
   );
 }

@@ -3,15 +3,9 @@ import ManholeList from "./ManholeList";
 import PipeList from "./PipelineList";
 
 export default function Dashboard({ role, userId }) {
-  // Temporary sample data (replace with API or DB later)
+  // Sample data (replace with backend fetch later)
   const manholes = [
-    {
-      id: 1,
-      status: "Needs Maintenance",
-      plus_code: "X123",
-      geom: { coordinates: [32.67, -18.97] },
-      flagged: false,
-    },
+    { id: 1, status: "Needs Maintenance", plus_code: "X123", geom: { coordinates: [32.67, -18.97] }, flagged: false },
   ];
 
   const pipes = [
@@ -21,49 +15,84 @@ export default function Dashboard({ role, userId }) {
       plus_code: "Y456",
       material: "PVC",
       condition: "Excellent",
-      geom: {
-        coordinates: [
-          [32.67, -18.97],
-          [32.68, -18.96],
-        ],
-      },
+      geom: { coordinates: [[32.67, -18.97], [32.68, -18.96]] },
       flagged: false,
     },
   ];
 
-  // Role messages and permissions
   const roleMessages = {
     engineer: "Full access: edit, upload, delete, and save flags.",
     "field-operator": "You can edit status and maintenance records.",
     "field-collector": "You can collect data and flag points or lines only.",
   };
 
-  // Role-based action buttons
+  // Helper to call backend endpoints with JWT
+  const callApi = async (endpoint, method = "POST", body = {}) => {
+    const token = localStorage.getItem("access_token");
+    try {
+      const res = await fetch(endpoint, {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: method !== "GET" ? JSON.stringify(body) : null,
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "API Error");
+      alert(`Success: ${JSON.stringify(data)}`);
+    } catch (err) {
+      alert(`Error: ${err.message}`);
+    }
+  };
+
+  // Role-specific action buttons
   const renderActions = () => {
     switch (role) {
       case "field-collector":
         return (
           <div className="role-actions">
-            <button onClick={() => alert("Collecting data...")}>Collect Data</button>
-            <button onClick={() => alert("Syncing collected data...")}>Sync Data</button>
-            <button onClick={() => alert("Flagging selected point/line")}>Flag Point/Line</button>
+            <button onClick={() => callApi("/collect-data", "POST", { userId })}>
+              Collect Data
+            </button>
+            <button onClick={() => callApi("/sync-data", "POST", { userId })}>
+              Sync Data
+            </button>
+            <button onClick={() => callApi("/flag-point-line", "POST", { userId })}>
+              Flag Point/Line
+            </button>
           </div>
         );
       case "field-operator":
         return (
           <div className="role-actions">
-            <button onClick={() => alert("Updating maintenance status")}>Update Status</button>
-            <button onClick={() => alert("Syncing updates...")}>Sync Updates</button>
+            <button onClick={() => callApi("/update-status", "POST", { userId })}>
+              Update Status
+            </button>
+            <button onClick={() => callApi("/sync-updates", "POST", { userId })}>
+              Sync Updates
+            </button>
           </div>
         );
       case "engineer":
         return (
           <div className="role-actions">
-            <button onClick={() => alert("Editing GIS data...")}>Edit Records</button>
-            <button onClick={() => alert("Uploading shapefile/CSV...")}>Upload Shapefile/CSV</button>
-            <button onClick={() => alert("Deleting selected features")}>Delete Features</button>
-            <button onClick={() => alert("Syncing GIS database...")}>Sync Data</button>
-            <button onClick={() => alert("Saving flagged points/lines")}>Save Flags</button>
+            <button onClick={() => callApi("/edit-records", "POST", { userId })}>
+              Edit Records
+            </button>
+            <button onClick={() => callApi("/engineer-upload", "POST", { userId })}>
+              Upload Shapefile/CSV
+            </button>
+            <button onClick={() => callApi("/delete-features", "POST", { userId })}>
+              Delete Features
+            </button>
+            <button onClick={() => callApi("/sync-data", "POST", { userId })}>
+              Sync Data
+            </button>
+            <button onClick={() => callApi("/save-flags", "POST", { userId })}>
+              Save Flags
+            </button>
           </div>
         );
       default:
