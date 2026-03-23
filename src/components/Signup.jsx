@@ -184,7 +184,7 @@ export default function Signup({ selectedRole, onBack }) {
   return (
     <div style={styles.wrapper}>
       <img 
-        src="/src/assets/Untitled design_20260319_161147_0000.png" 
+        src="/src/assets/logo.png" 
         alt="" 
         style={styles.backgroundLogo}
       />
