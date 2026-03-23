@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+/*import React, { useEffect, useRef, useState } from 'react';
 import NavigationTool from './NavigationTool';
 
 /**
@@ -26,7 +26,7 @@ import NavigationTool from './NavigationTool';
  */
 
 // ── Tile layer definitions ────────────────────────────────────────────────
-const TILE_LAYERS = {
+/*const TILE_LAYERS = {
   osm: {
     id:          'osm',
     label:       'Street Map',
@@ -268,7 +268,7 @@ export default function MapView({ manholes = [], pipes = [], role, userId, onFea
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
 
       {/* ── MAP DOM NODE ── */}
-      <div
+    /*  <div
         ref={mapRef}
         style={{ width: '100%', height: '100%' }}
       />
@@ -278,7 +278,7 @@ export default function MapView({ manholes = [], pipes = [], role, userId, onFea
         Positioned in top-right corner. Uses a CSS class from EngineerDashboard's
         global style block. z-index 900 keeps it below panels (1050) but above map.
       */}
-      <div style={{
+     /* <div style={{
         position:       'absolute',
         top:            12,
         right:          12,
@@ -321,7 +321,7 @@ export default function MapView({ manholes = [], pipes = [], role, userId, onFea
       </div>
 
       {/* ── NAVIGATION TOGGLE ── */}
-      <button
+     /* <button
         onClick={() => setShowNav(v => !v)}
         title="Navigation"
         style={{
@@ -353,7 +353,7 @@ export default function MapView({ manholes = [], pipes = [], role, userId, onFea
       </button>
 
       {/* ── NAVIGATION PANEL ── */}
-      {showNav && mapReady && (
+    ./*  {showNav && mapReady && (
         <div style={{
           position:  'absolute',
           top:       12,
@@ -370,7 +370,7 @@ export default function MapView({ manholes = [], pipes = [], role, userId, onFea
       )}
 
       {/* ── LEGEND ── */}
-      {showLegend && (
+   /*   {showLegend && (
         <div style={{
           position:       'absolute',
           bottom:         36,
@@ -418,7 +418,7 @@ export default function MapView({ manholes = [], pipes = [], role, userId, onFea
       )}
 
       {/* Legend toggle when hidden */}
-      {!showLegend && (
+     /* {!showLegend && (
         <button
           onClick={() => setShowLegend(true)}
           style={{
@@ -434,7 +434,7 @@ export default function MapView({ manholes = [], pipes = [], role, userId, onFea
       )}
 
       {/* ── COORDINATES BAR ── */}
-      {coordsText && (
+  /*    {coordsText && (
         <div style={{
           position:       'absolute',
           bottom:         8,
