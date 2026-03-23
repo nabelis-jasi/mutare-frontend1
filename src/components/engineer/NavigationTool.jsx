@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+/*import React, { useState, useEffect, useRef } from 'react';
 
 /**
  * NavigationTool.jsx
@@ -10,10 +10,10 @@ import React, { useState, useEffect, useRef } from 'react';
  */
 
 // ── OSRM public endpoint (OpenStreetMap routing) ──────────────────────────
-const OSRM = 'https://router.project-osrm.org/route/v1';
+/*const OSRM = 'https://router.project-osrm.org/route/v1';
 
 // ── Compass/direction helpers ─────────────────────────────────────────────
-const bearingToCardinal = (deg) => {
+/*const bearingToCardinal = (deg) => {
   const dirs = ['N','NE','E','SE','S','SW','W','NW'];
   return dirs[Math.round(deg / 45) % 8];
 };
@@ -259,7 +259,7 @@ export default function NavigationTool({ map, onClose }) {
   return (
     <div className="eng-panel" style={{ '--panel-color-bg': 'rgba(79,110,247,0.1)', '--panel-color-border': 'rgba(79,110,247,0.3)' }}>
       {/* Header */}
-      <div className="eng-panel-header">
+      /*<div className="eng-panel-header">
         <div className="eng-panel-header-icon">🧭</div>
         <div>
           <div className="eng-panel-title">Navigation</div>
@@ -271,7 +271,7 @@ export default function NavigationTool({ map, onClose }) {
       <div className="eng-panel-body">
 
         {/* ── Mode selector ── */}
-        <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+       /* <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
           {modeOpts.map(m => (
             <button
               key={m.id}
@@ -285,7 +285,7 @@ export default function NavigationTool({ map, onClose }) {
         </div>
 
         {/* ── Origin field ── */}
-        <div>
+       /* <div>
           <label className="eng-label">From (Origin)</label>
           <div style={{ display: 'flex', gap: 6 }}>
             <input
@@ -316,7 +316,7 @@ export default function NavigationTool({ map, onClose }) {
         </div>
 
         {/* ── Destination field ── */}
-        <div style={{ marginTop: 10 }}>
+        /*<div style={{ marginTop: 10 }}>
           <label className="eng-label">To (Destination)</label>
           <div style={{ display: 'flex', gap: 6 }}>
             <input
@@ -338,10 +338,10 @@ export default function NavigationTool({ map, onClose }) {
         </div>
 
         {/* ── Error ── */}
-        {error && <div className="eng-status err" style={{ marginTop: 10 }}>{error}</div>}
+      /*  {error && <div className="eng-status err" style={{ marginTop: 10 }}>{error}</div>}
 
         {/* ── Route button ── */}
-        {!route && (
+       /* {!route && (
           <div className="eng-btn-row">
             <button className="eng-btn eng-btn-ghost" onClick={handleClear}>Clear</button>
             <button
@@ -356,7 +356,7 @@ export default function NavigationTool({ map, onClose }) {
         )}
 
         {/* ── Route summary ── */}
-        {route && (
+       /* {route && (
           <>
             <div style={{ display: 'flex', gap: 8, marginTop: 14, marginBottom: 14 }}>
               <div className="eng-stat-card blue" style={{ flex: 1 }}>
@@ -370,7 +370,7 @@ export default function NavigationTool({ map, onClose }) {
             </div>
 
             {/* ── Active step navigator ── */}
-            {currentStep && (
+           /* {currentStep && (
               <div style={{
                 background: 'var(--bg-base)',
                 border: '1px solid var(--accent-blue)',
@@ -380,7 +380,7 @@ export default function NavigationTool({ map, onClose }) {
                 boxShadow: '0 0 0 1px var(--accent-blue), 0 4px 20px var(--glow-blue)',
               }}>
                 {/* Big direction icon */}
-                <div style={{ textAlign: 'center', marginBottom: 8 }}>
+               /* <div style={{ textAlign: 'center', marginBottom: 8 }}>
                   <div style={{
                     fontSize: 40,
                     lineHeight: 1,
@@ -392,7 +392,7 @@ export default function NavigationTool({ map, onClose }) {
                 </div>
 
                 {/* Instruction */}
-                <div style={{
+             /*   <div style={{
                   textAlign: 'center',
                   fontSize: 13,
                   fontWeight: 700,
@@ -406,14 +406,14 @@ export default function NavigationTool({ map, onClose }) {
                 </div>
 
                 {/* Distance for this step */}
-                <div style={{ textAlign: 'center', fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-sec)', marginBottom: 10 }}>
+                /*<div style={{ textAlign: 'center', fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-sec)', marginBottom: 10 }}>
                   {metersToHuman(currentStep.distance)}
                   {currentStep.bearing_after != null &&
                     ` · Head ${bearingToCardinal(currentStep.bearing_after)}`}
                 </div>
 
                 {/* Step counter + prev/next */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                /*<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                   <button
                     className="eng-btn eng-btn-ghost"
                     style={{ padding: '6px 12px' }}
@@ -438,7 +438,7 @@ export default function NavigationTool({ map, onClose }) {
             )}
 
             {/* ── All steps list ── */}
-            <div className="eng-section-head">All Steps</div>
+            /*<div className="eng-section-head">All Steps</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               {steps.map((step, i) => (
                 <div
@@ -475,7 +475,7 @@ export default function NavigationTool({ map, onClose }) {
             </div>
 
             {/* Re-route / clear */}
-            <div className="eng-btn-row" style={{ marginTop: 16 }}>
+           /* <div className="eng-btn-row" style={{ marginTop: 16 }}>
               <button className="eng-btn eng-btn-ghost" onClick={handleClear}>
                 🗑 Clear Route
               </button>
