@@ -8,7 +8,7 @@ import NavigationTool from './NavigationTool';
 import HomePanel from './HomePanel';
 import ProfilePanel from './ProfilePanel';
 import SettingsPanel from './SettingsPanel';
-import './dashboard.css';
+import './Dashboard.css';
 
 export default function EngineerDashboard({ manholes, pipes, userId, role, onDataRefresh, userProfile }) {
   const [activePanel,   setActivePanel]   = useState(null);
