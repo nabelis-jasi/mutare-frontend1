@@ -2,22 +2,21 @@ import React, { useState } from 'react';
 import { supabase } from '../../supabaseClient';
 
 export default function DataSync({ userId, onSyncComplete, onClose }) {
-  const [syncing, setSyncing] = useState(false);
-  const [status, setStatus] = useState('');
-  const [statusType, setStatusType] = useState('info');
+  const [syncing,  setSyncing]  = useState(false);
+  const [status,   setStatus]   = useState('');
+  const [sCls,     setSCls]     = useState('info');
   const [syncType, setSyncType] = useState('all');
   const [progress, setProgress] = useState(0);
-  const [syncHistory, setSyncHistory] = useState(() => {
+  const [history,  setHistory]  = useState(() => {
     try { return JSON.parse(localStorage.getItem('sync_history') || '[]'); } catch { return []; }
   });
 
   const syncManholes = async () => {
-    setStatus('Uploading pending manhole changes…');
-    setProgress(25);
+    setStatus('Uploading manhole changes…'); setProgress(25);
     const pending = JSON.parse(localStorage.getItem('pending_manholes') || '[]');
     for (let i = 0; i < pending.length; i++) {
       const { error } = await supabase.from('waste_water_manhole').upsert([pending[i]], { onConflict: 'gid' });
-      if (error) throw new Error(`Manhole sync failed: ${error.message}`);
+      if (error) throw new Error(error.message);
       setProgress(25 + Math.round((i / pending.length) * 20));
     }
     localStorage.setItem('pending_manholes', '[]');
@@ -25,208 +24,159 @@ export default function DataSync({ userId, onSyncComplete, onClose }) {
   };
 
   const syncPipelines = async () => {
-    setStatus('Uploading pending pipeline changes…');
-    setProgress(50);
+    setStatus('Uploading pipeline changes…'); setProgress(50);
     const pending = JSON.parse(localStorage.getItem('pending_pipelines') || '[]');
     for (let i = 0; i < pending.length; i++) {
       const { error } = await supabase.from('waste_water_pipeline').upsert([pending[i]], { onConflict: 'gid' });
-      if (error) throw new Error(`Pipeline sync failed: ${error.message}`);
+      if (error) throw new Error(error.message);
       setProgress(50 + Math.round((i / pending.length) * 20));
     }
     localStorage.setItem('pending_pipelines', '[]');
     return pending.length;
   };
 
-  const syncRemoteToLocal = async () => {
-    setStatus('Downloading latest remote data…');
-    setProgress(75);
-    const { data: manholes, error: me } = await supabase.from('waste_water_manhole').select('*').order('updated_at', { ascending: false });
+  const pullRemote = async () => {
+    setStatus('Downloading remote data…'); setProgress(75);
+    const { data: m, error: me } = await supabase.from('waste_water_manhole').select('*').order('updated_at', { ascending: false });
     if (me) throw new Error(me.message);
-    const { data: pipelines, error: pe } = await supabase.from('waste_water_pipeline').select('*').order('updated_at', { ascending: false });
+    const { data: p, error: pe } = await supabase.from('waste_water_pipeline').select('*').order('updated_at', { ascending: false });
     if (pe) throw new Error(pe.message);
-    localStorage.setItem('offline_manholes', JSON.stringify(manholes));
-    localStorage.setItem('offline_pipelines', JSON.stringify(pipelines));
+    localStorage.setItem('offline_manholes', JSON.stringify(m));
+    localStorage.setItem('offline_pipelines', JSON.stringify(p));
     localStorage.setItem('last_sync_time', new Date().toISOString());
     setProgress(100);
-    return { manholes: manholes.length, pipelines: pipelines.length };
+    return { m: m.length, p: p.length };
   };
 
   const handleSync = async () => {
-    setSyncing(true);
-    setStatus('Initialising sync…');
-    setStatusType('info');
-    setProgress(0);
+    setSyncing(true); setStatus('Starting sync…'); setSCls('info'); setProgress(0);
     try {
-      const results = { manholesSynced: 0, pipelinesSynced: 0, remoteSynced: false };
-      if (syncType === 'all' || syncType === 'manholes')   results.manholesSynced  = await syncManholes();
-      if (syncType === 'all' || syncType === 'pipelines')  results.pipelinesSynced = await syncPipelines();
-      if (syncType === 'all' || syncType === 'download')   { await syncRemoteToLocal(); results.remoteSynced = true; }
+      const res = { mh: 0, pl: 0, remote: false };
+      if (syncType === 'all' || syncType === 'manholes')  res.mh = await syncManholes();
+      if (syncType === 'all' || syncType === 'pipelines') res.pl = await syncPipelines();
+      if (syncType === 'all' || syncType === 'download')  { await pullRemote(); res.remote = true; }
 
-      const record = { timestamp: new Date().toISOString(), type: syncType, results, userId };
-      const newHistory = [record, ...syncHistory].slice(0, 10);
-      setSyncHistory(newHistory);
-      localStorage.setItem('sync_history', JSON.stringify(newHistory));
+      const rec = { timestamp: new Date().toISOString(), type: syncType, res, userId };
+      const h   = [rec, ...history].slice(0, 10);
+      setHistory(h);
+      localStorage.setItem('sync_history', JSON.stringify(h));
 
-      setStatus(`Sync complete — ${results.manholesSynced} manholes, ${results.pipelinesSynced} pipelines pushed.`);
-      setStatusType('ok');
+      setStatus(`Sync complete — ${res.mh} manholes, ${res.pl} pipelines pushed.`);
+      setSCls('ok');
       onSyncComplete?.();
     } catch (err) {
-      setStatus(`Sync failed: ${err.message}`);
-      setStatusType('err');
+      setStatus(`Sync failed: ${err.message}`); setSCls('err');
     } finally {
       setSyncing(false);
     }
   };
 
-  const handleForceResync = async () => {
-    if (!confirm('Force full resync will discard all local pending changes and download fresh data. Continue?')) return;
-    setSyncing(true);
-    setStatus('Clearing local cache…');
-    setStatusType('info');
-    setProgress(10);
+  const forceResync = async () => {
+    if (!confirm('Discard all local changes and pull fresh data?')) return;
+    setSyncing(true); setStatus('Clearing cache…'); setSCls('info'); setProgress(10);
     try {
       localStorage.removeItem('pending_manholes');
       localStorage.removeItem('pending_pipelines');
       setProgress(20);
-      const { data: manholes, error: me } = await supabase.from('waste_water_manhole').select('*');
+      const { data: m, error: me } = await supabase.from('waste_water_manhole').select('*');
       if (me) throw new Error(me.message);
       setProgress(60);
-      const { data: pipelines, error: pe } = await supabase.from('waste_water_pipeline').select('*');
+      const { data: p, error: pe } = await supabase.from('waste_water_pipeline').select('*');
       if (pe) throw new Error(pe.message);
-      localStorage.setItem('offline_manholes', JSON.stringify(manholes));
-      localStorage.setItem('offline_pipelines', JSON.stringify(pipelines));
+      localStorage.setItem('offline_manholes', JSON.stringify(m));
+      localStorage.setItem('offline_pipelines', JSON.stringify(p));
       localStorage.setItem('last_sync_time', new Date().toISOString());
       setProgress(100);
-      setStatus(`Full resync done — ${manholes.length} manholes, ${pipelines.length} pipelines loaded.`);
-      setStatusType('ok');
+      setStatus(`Full resync — ${m.length} manholes, ${p.length} pipelines.`);
+      setSCls('ok');
       onSyncComplete?.();
     } catch (err) {
-      setStatus(`Force resync failed: ${err.message}`);
-      setStatusType('err');
+      setStatus(`Resync failed: ${err.message}`); setSCls('err');
     } finally {
       setSyncing(false);
     }
   };
 
-  const getLastSync = () => {
-    const t = localStorage.getItem('last_sync_time');
-    return t ? new Date(t).toLocaleString() : 'Never';
-  };
-
-  const getPending = () => {
+  const lastSync = () => { const t = localStorage.getItem('last_sync_time'); return t ? new Date(t).toLocaleString() : 'Never'; };
+  const pending  = () => {
     const m = JSON.parse(localStorage.getItem('pending_manholes') || '[]').length;
     const p = JSON.parse(localStorage.getItem('pending_pipelines') || '[]').length;
     return m + p;
   };
+  const pend = pending();
 
-  const pending = getPending();
-
-  const syncOptions = [
-    { id: 'all',       icon: '🔄', label: 'Full Sync' },
-    { id: 'manholes',  icon: '🕳️', label: 'Manholes' },
-    { id: 'pipelines', icon: '📏', label: 'Pipelines' },
-    { id: 'download',  icon: '⬇', label: 'Download Only' },
+  const modes = [
+    { id: 'all',       icon: '🔄', lbl: 'Full Sync'     },
+    { id: 'manholes',  icon: '🕳️', lbl: 'Manholes'      },
+    { id: 'pipelines', icon: '📏', lbl: 'Pipelines'     },
+    { id: 'download',  icon: '⬇',  lbl: 'Download Only' },
   ];
 
   return (
-    <div className="eng-panel" style={{ '--panel-color-bg': 'rgba(14,165,233,0.1)', '--panel-color-border': 'rgba(14,165,233,0.3)' }}>
-      <div className="eng-panel-header">
-        <div className="eng-panel-header-icon">🔄</div>
+    <div className="wd-panel" style={{ '--panel-icon-bg': 'rgba(34,211,238,0.08)', '--panel-icon-border': 'rgba(34,211,238,0.25)' }}>
+      <div className="wd-panel-header">
+        <div className="wd-panel-icon">🔄</div>
         <div>
-          <div className="eng-panel-title">Data Sync</div>
-          <div className="eng-panel-sub">Push local changes · Pull remote updates</div>
+          <div className="wd-panel-title">Data Sync</div>
+          <div className="wd-panel-sub">Push local · Pull remote · Force resync</div>
         </div>
-        <button className="eng-panel-close" onClick={onClose}>×</button>
+        <button className="wd-panel-close" onClick={onClose}>×</button>
       </div>
 
-      <div className="eng-panel-body">
+      <div className="wd-panel-body">
         {/* Status overview */}
-        <div className="eng-info-grid">
-          <div className={`eng-stat-card ${pending > 0 ? 'amber' : 'green'}`}>
-            <div className="sc-num">{pending}</div>
-            <div className="sc-label">Pending</div>
+        <div className="wd-stats" style={{ gridTemplateColumns: '1fr 1fr' }}>
+          <div className={`wd-stat ${pend > 0 ? 'amber' : 'green'}`}>
+            <div className="s-num">{pend}</div>
+            <div className="s-lbl">Pending</div>
           </div>
-          <div className="eng-stat-card blue">
-            <div className="sc-num" style={{ fontSize: 13 }}>{getLastSync().split(',')[0]}</div>
-            <div className="sc-label">Last Sync</div>
+          <div className="wd-stat lime">
+            <div className="s-num" style={{ fontSize: 13 }}>{lastSync().split(',')[0]}</div>
+            <div className="s-lbl">Last Sync</div>
           </div>
         </div>
 
-        {/* Sync type */}
-        <div className="eng-section-head">Sync Mode</div>
-        <div className="eng-sync-grid">
-          {syncOptions.map(opt => (
-            <div
-              key={opt.id}
-              className={`eng-sync-opt${syncType === opt.id ? ' active' : ''}`}
-              onClick={() => !syncing && setSyncType(opt.id)}
-            >
-              <span>{opt.icon}</span>
-              <span>{opt.label}</span>
+        {/* Session info */}
+        <div style={{ padding: '10px 12px', background: 'var(--bg-raised)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', marginBottom: 14 }}>
+          <div className="wd-info-row"><span className="ir-k">User ID</span><span className="ir-v" style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{userId?.slice(0,14)}…</span></div>
+          <div className="wd-info-row"><span className="ir-k">Connection</span><span className="ir-v" style={{ color: 'var(--accent-primary)' }}>● Online</span></div>
+        </div>
+
+        {/* Sync mode */}
+        <div className="wd-section">Sync Mode</div>
+        <div className="wd-mode-grid">
+          {modes.map(m => (
+            <div key={m.id} className={`wd-mode-tile${syncType===m.id?' active':''}`} onClick={() => !syncing && setSyncType(m.id)}>
+              <span>{m.icon}</span> {m.lbl}
             </div>
           ))}
-        </div>
-
-        {/* User info */}
-        <div style={{ padding: '10px 12px', background: 'var(--bg-base)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', marginBottom: 14 }}>
-          <div className="eng-info-row">
-            <span className="ir-label">User</span>
-            <span className="ir-value" style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>
-              {userId ? userId.substring(0, 12) + '…' : 'Unknown'}
-            </span>
-          </div>
-          <div className="eng-info-row">
-            <span className="ir-label">Connection</span>
-            <span className="ir-value" style={{ color: 'var(--accent-green)', fontSize: 11 }}>● Online</span>
-          </div>
         </div>
 
         {/* Progress */}
         {syncing && (
           <>
-            <div className="eng-progress-wrap">
-              <div className="eng-progress-fill" style={{ width: `${progress}%` }} />
-            </div>
-            <div style={{ textAlign: 'center', fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-sec)', marginBottom: 8 }}>
-              {progress}%
-            </div>
+            <div className="wd-progress-track"><div className="wd-progress-fill" style={{ width: `${progress}%` }} /></div>
+            <div style={{ textAlign: 'center', fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-sec)', marginBottom: 8 }}>{progress}%</div>
           </>
         )}
 
-        {/* Status */}
-        {status && <div className={`eng-status ${statusType}`}>{status}</div>}
+        {status && <div className={`wd-status ${sCls}`}>{status}</div>}
 
-        {/* Actions */}
-        <div className="eng-btn-row">
-          <button
-            className="eng-btn eng-btn-primary"
-            onClick={handleSync}
-            disabled={syncing}
-            style={{ flex: 2 }}
-          >
-            {syncing ? `⏳ Syncing… ${progress}%` : '🔄 Start Sync'}
+        <div className="wd-btn-row">
+          <button className="wd-btn wd-btn-primary" style={{ flex: 2 }} onClick={handleSync} disabled={syncing}>
+            {syncing ? `⏳ ${progress}%…` : '🔄 Start Sync'}
           </button>
-          <button
-            className="eng-btn eng-btn-amber"
-            onClick={handleForceResync}
-            disabled={syncing}
-            style={{ flex: 1 }}
-          >
-            Force
-          </button>
+          <button className="wd-btn wd-btn-amber" onClick={forceResync} disabled={syncing}>Force</button>
         </div>
 
         {/* History */}
-        {syncHistory.length > 0 && (
+        {history.length > 0 && (
           <>
-            <div className="eng-section-head" style={{ marginTop: 20 }}>Recent Syncs</div>
-            {syncHistory.slice(0, 5).map((item, i) => (
-              <div key={i} className="eng-history-item">
-                <div className="hi-time">{new Date(item.timestamp).toLocaleString()}</div>
-                <div className="hi-detail">
-                  {item.type} · {item.results.manholesSynced} manholes · {item.results.pipelinesSynced} pipelines
-                  {item.results.remoteSynced ? ' · remote pulled' : ''}
-                </div>
+            <div className="wd-section" style={{ marginTop: 20 }}>Recent Syncs</div>
+            {history.slice(0, 5).map((item, i) => (
+              <div key={i} className="wd-history">
+                <div className="h-time">{new Date(item.timestamp).toLocaleString()}</div>
+                <div className="h-detail">{item.type} · {item.res.mh} manholes · {item.res.pl} pipelines{item.res.remote ? ' · pulled' : ''}</div>
               </div>
             ))}
           </>

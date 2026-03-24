@@ -1,163 +1,138 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { supabase } from '../../supabaseClient';
 import shp from 'shpjs';
 
-export default function ShapefileUploader({ onUploadComplete }) {
-  const [uploading, setUploading] = useState(false);
-  const [status, setStatus] = useState('');
-  const [file, setFile] = useState(null);
+export default function ShapefileUploader({ onUploadComplete, onClose }) {
+  const [file,      setFile]     = useState(null);
+  const [uploading, setUploading]= useState(false);
+  const [progress,  setProgress] = useState(0);
+  const [status,    setStatus]   = useState('');
+  const [statusCls, setStatusCls]= useState('info');
+  const [stats,     setStats]    = useState(null);
+  const inputRef = useRef();
 
-  const handleFileSelect = (e) => {
-    const selectedFile = e.target.files[0];
-    if (selectedFile && selectedFile.name.endsWith('.zip')) {
-      setFile(selectedFile);
-      setStatus('File selected: ' + selectedFile.name);
-    } else {
-      setStatus('Please select a .zip file containing shapefile');
-      setFile(null);
-    }
+  const pick = (f) => {
+    if (f && f.name.endsWith('.zip')) { setFile(f); setStatus(''); setStats(null); }
+    else { setFile(null); setStatus('Select a .zip file containing .shp, .dbf and .prj'); setStatusCls('err'); }
   };
 
   const handleUpload = async () => {
-    if (!file) {
-      setStatus('Please select a file first');
-      return;
-    }
-
-    setUploading(true);
-    setStatus('Reading shapefile...');
-
+    if (!file) return;
+    setUploading(true); setProgress(5); setStatus('Reading archive…'); setStatusCls('info');
     try {
-      // Read shapefile
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        try {
-          const arrayBuffer = e.target.result;
-          const geojson = await shp(arrayBuffer);
-          
-          setStatus(`Processing ${geojson.features.length} features...`);
-          
-          // Process features
-          let manholesAdded = 0;
-          let pipelinesAdded = 0;
-          
-          for (const feature of geojson.features) {
-            if (feature.geometry.type === 'Point') {
-              // Add to manholes table
-              const { error } = await supabase
-                .from('waste_water_manhole')
-                .insert([{
-                  geom: feature.geometry,
-                  status: feature.properties.status || 'Good',
-                  manhole_id: feature.properties.id || `MH_${Date.now()}_${manholesAdded}`,
-                  created_at: new Date().toISOString()
-                }]);
-              
-              if (!error) manholesAdded++;
-            } 
-            else if (feature.geometry.type === 'LineString') {
-              // Add to pipelines table
-              const { error } = await supabase
-                .from('waste_water_pipeline')
-                .insert([{
-                  geom: feature.geometry,
-                  status: feature.properties.status || 'Good',
-                  pipe_id: feature.properties.id || `PL_${Date.now()}_${pipelinesAdded}`,
-                  pipe_mat: feature.properties.material || 'Unknown',
-                  length: feature.properties.length || 0,
-                  created_at: new Date().toISOString()
-                }]);
-              
-              if (!error) pipelinesAdded++;
-            }
-          }
-          
-          setStatus(`✅ Upload complete! Added ${manholesAdded} manholes and ${pipelinesAdded} pipelines.`);
-          onUploadComplete();
-          
-        } catch (err) {
-          setStatus(`❌ Error processing shapefile: ${err.message}`);
-        } finally {
-          setUploading(false);
+      const buf    = await file.arrayBuffer();
+      setProgress(20);
+      const geojson = await shp(buf);
+      const features = geojson.features;
+      setProgress(30); setStatus(`Processing ${features.length} features…`);
+
+      let mh = 0, pl = 0, err = 0;
+      for (let i = 0; i < features.length; i++) {
+        const f = features[i];
+        setProgress(30 + Math.round((i / features.length) * 60));
+
+        if (f.geometry.type === 'Point') {
+          const { error } = await supabase.from('waste_water_manhole').insert([{
+            geom:       f.geometry,
+            status:     f.properties.status    || 'Good',
+            manhole_id: f.properties.id        || `MH_${Date.now()}_${mh}`,
+            created_at: new Date().toISOString(),
+          }]);
+          error ? err++ : mh++;
+        } else if (f.geometry.type === 'LineString') {
+          const { error } = await supabase.from('waste_water_pipeline').insert([{
+            geom:       f.geometry,
+            status:     f.properties.status   || 'Good',
+            pipe_id:    f.properties.id       || `PL_${Date.now()}_${pl}`,
+            pipe_mat:   f.properties.material || 'Unknown',
+            length:     f.properties.length   || 0,
+            created_at: new Date().toISOString(),
+          }]);
+          error ? err++ : pl++;
         }
-      };
-      
-      reader.readAsArrayBuffer(file);
-      
-    } catch (error) {
-      setStatus(`❌ Error: ${error.message}`);
+      }
+
+      setProgress(100);
+      setStats({ manholes: mh, pipelines: pl, errors: err });
+      setStatus(`Import complete — ${mh + pl} features added.`);
+      setStatusCls('ok');
+      onUploadComplete();
+    } catch (e) {
+      setStatus(`Failed: ${e.message}`);
+      setStatusCls('err');
+    } finally {
       setUploading(false);
     }
   };
 
-  const styles = {
-    container: {
-      position: "absolute",
-      top: "80px",
-      right: "20px",
-      width: "350px",
-      backgroundColor: "white",
-      borderRadius: "12px",
-      boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-      zIndex: 1000,
-      overflow: "hidden",
-    },
-    header: {
-      padding: "1rem",
-      backgroundColor: "#4caf50",
-      color: "white",
-      fontWeight: "bold",
-    },
-    content: {
-      padding: "1rem",
-    },
-    fileInput: {
-      width: "100%",
-      padding: "0.5rem",
-      marginBottom: "0.5rem",
-    },
-    button: {
-      width: "100%",
-      padding: "0.75rem",
-      backgroundColor: "#4caf50",
-      color: "white",
-      border: "none",
-      borderRadius: "6px",
-      cursor: "pointer",
-      fontSize: "1rem",
-    },
-    status: {
-      marginTop: "1rem",
-      padding: "0.5rem",
-      borderRadius: "4px",
-      fontSize: "0.9rem",
-      textAlign: "center",
-    },
-  };
-
   return (
-    <div style={styles.container}>
-      <div style={styles.header}>
-        📤 Upload Shapefile/CSV
+    <div className="wd-panel" style={{ '--panel-icon-bg': 'rgba(74,173,74,0.08)', '--panel-icon-border': 'rgba(74,173,74,0.25)' }}>
+      <div className="wd-panel-header">
+        <div className="wd-panel-icon">📤</div>
+        <div>
+          <div className="wd-panel-title">Upload Shapefile</div>
+          <div className="wd-panel-sub">ZIP archive · Point &amp; LineString</div>
+        </div>
+        <button className="wd-panel-close" onClick={onClose}>×</button>
       </div>
-      <div style={styles.content}>
-        <input
-          type="file"
-          accept=".zip"
-          onChange={handleFileSelect}
-          style={styles.fileInput}
-          disabled={uploading}
-        />
-        <button 
-          style={styles.button} 
-          onClick={handleUpload}
-          disabled={uploading || !file}
+
+      <div className="wd-panel-body">
+        {/* Drop zone */}
+        <div
+          className={`wd-drop${file ? ' active' : ''}`}
+          onClick={() => inputRef.current?.click()}
+          onDrop={e => { e.preventDefault(); pick(e.dataTransfer.files[0]); }}
+          onDragOver={e => e.preventDefault()}
         >
-          {uploading ? "Uploading..." : "Upload Shapefile"}
-        </button>
-        {status && (
-          <div style={styles.status}>{status}</div>
+          <div className="dz-icon">{file ? '✅' : '📁'}</div>
+          <div className="dz-text">{file ? file.name : 'Drop .zip shapefile here'}</div>
+          <div className="dz-sub">{file ? `${(file.size/1024).toFixed(1)} KB — click to change` : 'or click to browse'}</div>
+          <input ref={inputRef} type="file" accept=".zip" style={{ display:'none' }} onChange={e => pick(e.target.files[0])} disabled={uploading} />
+        </div>
+
+        {/* Format guide */}
+        <div className="wd-section">Supported Geometry</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
+          {[
+            { icon: '🕳️', title: 'Point → Manholes',  sub: '.shp Point geometry' },
+            { icon: '📏', title: 'Line → Pipelines',  sub: '.shp LineString geometry' },
+          ].map(f => (
+            <div key={f.title} style={{ padding: '10px 12px', background: 'var(--bg-raised)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)' }}>
+              <div style={{ fontSize: 18, marginBottom: 4 }}>{f.icon}</div>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: 12, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-pri)' }}>{f.title}</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-dim)', marginTop: 2 }}>{f.sub}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Progress */}
+        {uploading && (
+          <>
+            <div className="wd-progress-track"><div className="wd-progress-fill" style={{ width: `${progress}%` }} /></div>
+            <div style={{ textAlign: 'center', fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-sec)', marginBottom: 8 }}>{progress}%</div>
+          </>
         )}
+
+        {status && <div className={`wd-status ${statusCls}`}>{status}</div>}
+
+        {/* Import stats */}
+        {stats && (
+          <>
+            <div className="wd-section">Import Summary</div>
+            <div className="wd-stats" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
+              <div className="wd-stat green"><div className="s-num">{stats.manholes}</div><div className="s-lbl">Manholes</div></div>
+              <div className="wd-stat lime"> <div className="s-num">{stats.pipelines}</div><div className="s-lbl">Pipelines</div></div>
+              <div className={`wd-stat ${stats.errors > 0 ? 'red' : 'green'}`}><div className="s-num">{stats.errors}</div><div className="s-lbl">Errors</div></div>
+            </div>
+          </>
+        )}
+
+        <div className="wd-btn-row">
+          <button className="wd-btn wd-btn-ghost" onClick={onClose} disabled={uploading}>Close</button>
+          <button className="wd-btn wd-btn-primary" onClick={handleUpload} disabled={uploading || !file}>
+            {uploading ? `⏳ ${progress}%…` : '⬆ Import'}
+          </button>
+        </div>
       </div>
     </div>
   );

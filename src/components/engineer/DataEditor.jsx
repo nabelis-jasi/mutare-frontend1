@@ -3,8 +3,8 @@ import { supabase } from '../../supabaseClient';
 
 export default function DataEditor({ feature, onSave, onCancel }) {
   const [formData, setFormData] = useState(feature || {});
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [saving,   setSaving]   = useState(false);
+  const [saved,    setSaved]    = useState(false);
 
   const isManhole = feature?.type === 'manhole';
 
@@ -12,84 +12,70 @@ export default function DataEditor({ feature, onSave, onCancel }) {
     setSaving(true);
     try {
       const table = isManhole ? 'waste_water_manhole' : 'waste_water_pipeline';
-      const { error } = await supabase
-        .from(table)
-        .update(formData)
-        .eq('gid', feature.gid);
+      const { error } = await supabase.from(table).update(formData).eq('gid', feature.gid);
       if (error) throw error;
       setSaved(true);
-      setTimeout(() => onSave(), 800);
-    } catch (error) {
-      alert('Error saving: ' + error.message);
+      setTimeout(onSave, 700);
+    } catch (err) {
+      alert('Save error: ' + err.message);
     } finally {
       setSaving(false);
     }
   };
 
-  const editableKeys = Object.keys(formData).filter(
-    k => k !== 'gid' && k !== 'geom' && k !== 'type'
-  );
-
-  // Group fields for layout: pairs side by side
+  const editableKeys = Object.keys(formData).filter(k => !['gid','geom','type','feature_type'].includes(k));
   const pairs = [];
-  for (let i = 0; i < editableKeys.length; i += 2) {
-    pairs.push(editableKeys.slice(i, i + 2));
-  }
+  for (let i = 0; i < editableKeys.length; i += 2) pairs.push(editableKeys.slice(i, i + 2));
 
   return (
-    <div className="eng-panel" style={{ '--panel-color-bg': 'rgba(79,110,247,0.12)', '--panel-color-border': 'rgba(79,110,247,0.3)' }}>
-      {/* Header */}
-      <div className="eng-panel-header">
-        <div className="eng-panel-header-icon">✏️</div>
+    <div className="wd-panel" style={{ '--panel-icon-bg': 'rgba(143,220,0,0.08)', '--panel-icon-border': 'rgba(143,220,0,0.25)' }}>
+      <div className="wd-panel-header">
+        <div className="wd-panel-icon">✏️</div>
         <div>
-          <div className="eng-panel-title">Edit {isManhole ? 'Manhole' : 'Pipeline'}</div>
-          <div className="eng-panel-sub">GID: {feature?.gid ?? '—'}</div>
+          <div className="wd-panel-title">Edit {isManhole ? 'Manhole' : 'Pipeline'}</div>
+          <div className="wd-panel-sub">GID: {feature?.gid ?? '—'} · Supabase record</div>
         </div>
-        <button className="eng-panel-close" onClick={onCancel}>×</button>
+        <button className="wd-panel-close" onClick={onCancel}>×</button>
       </div>
 
-      {/* Body */}
-      <div className="eng-panel-body">
-        {/* Feature info row */}
+      <div className="wd-panel-body">
+        {/* Feature badge */}
         <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          padding: '10px 12px',
-          background: 'var(--bg-base)',
+          display: 'flex', alignItems: 'center', gap: 12,
+          padding: '10px 14px',
+          background: 'var(--bg-raised)',
           border: '1px solid var(--border)',
-          borderRadius: 'var(--radius-md)',
+          borderRadius: 'var(--r-md)',
           marginBottom: 16,
         }}>
           <div style={{
-            width: 36, height: 36,
-            borderRadius: 8,
-            background: isManhole ? 'rgba(79,110,247,0.12)' : 'rgba(14,165,233,0.12)',
-            border: `1px solid ${isManhole ? 'rgba(79,110,247,0.3)' : 'rgba(14,165,233,0.3)'}`,
+            width: 40, height: 40, borderRadius: 'var(--r-sm)',
+            background: isManhole ? 'rgba(143,220,0,0.08)' : 'rgba(34,211,238,0.08)',
+            border: `1px solid ${isManhole ? 'rgba(143,220,0,0.3)' : 'rgba(34,211,238,0.3)'}`,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 16, flexShrink: 0,
+            fontSize: 18, flexShrink: 0,
           }}>
             {isManhole ? '🕳️' : '📏'}
           </div>
           <div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-pri)' }}>
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-pri)' }}>
               {isManhole ? 'Manhole' : 'Pipeline'} Record
             </div>
-            <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-sec)', marginTop: 2 }}>
-              Modify attributes below — changes sync to Supabase
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-sec)', marginTop: 2 }}>
+              Editing all attributes — saved directly to Supabase
             </div>
           </div>
         </div>
 
-        <div className="eng-section-head">Attributes</div>
+        <div className="wd-section">Attributes</div>
 
         {pairs.map((pair, pi) => (
-          <div key={pi} className="eng-field-row" style={{ marginBottom: 10 }}>
+          <div key={pi} className="wd-field-pair">
             {pair.map(key => (
-              <div key={key}>
-                <label className="eng-label">{key.replace(/_/g, ' ')}</label>
+              <div key={key} className="wd-field">
+                <label className="wd-label">{key.replace(/_/g, ' ')}</label>
                 <input
-                  className="eng-input"
+                  className="wd-input"
                   value={formData[key] ?? ''}
                   onChange={e => setFormData({ ...formData, [key]: e.target.value })}
                 />
@@ -98,21 +84,11 @@ export default function DataEditor({ feature, onSave, onCancel }) {
           </div>
         ))}
 
-        {saved && (
-          <div className="eng-status ok" style={{ marginTop: 8 }}>
-            ✓ Saved successfully
-          </div>
-        )}
+        {saved && <div className="wd-status ok" style={{ marginTop: 12 }}>✓ Saved successfully</div>}
 
-        <div className="eng-btn-row">
-          <button className="eng-btn eng-btn-ghost" onClick={onCancel} disabled={saving}>
-            Cancel
-          </button>
-          <button
-            className="eng-btn eng-btn-primary"
-            onClick={handleSave}
-            disabled={saving || saved}
-          >
+        <div className="wd-btn-row">
+          <button className="wd-btn wd-btn-ghost"    onClick={onCancel} disabled={saving}>Cancel</button>
+          <button className="wd-btn wd-btn-primary"  onClick={handleSave} disabled={saving || saved}>
             {saving ? '⏳ Saving…' : saved ? '✓ Saved' : '💾 Save Changes'}
           </button>
         </div>
