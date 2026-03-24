@@ -1,1 +1,206 @@
+/* OperatorDashboard.css – styles for the field operator dashboard */
 
+/* Root container – full viewport, dark forest background */
+.wd-root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: var(--bg-root, #071407);
+  font-family: var(--font-body, 'Barlow', sans-serif);
+  color: var(--text-pri, #e8f5e8);
+  overflow: hidden;
+}
+
+/* Map wrapper – respects top bar height */
+.wd-map-wrap {
+  position: absolute;
+  top: var(--topbar-h, 58px);
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+/* Floating action buttons – placed on the right side, styled like rail buttons */
+.wd-float-actions {
+  position: absolute;
+  top: calc(var(--topbar-h, 58px) + 14px);
+  right: 14px;
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  z-index: 1100;
+}
+
+/* Base button styles from the design system */
+.wd-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 9px 18px;
+  border: none;
+  border-radius: var(--r-sm, 6px);
+  font-family: var(--font-display, 'Barlow Condensed', sans-serif);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.wd-btn-primary {
+  background: var(--accent-primary, #4aad4a);
+  color: #011001;
+  box-shadow: 0 4px 16px var(--glow-green, rgba(74, 173, 74, 0.25));
+}
+.wd-btn-primary:hover:not(:disabled) {
+  background: var(--g-200, #6dcf6d);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px var(--glow-green, rgba(74, 173, 74, 0.25));
+}
+.wd-btn-primary.active {
+  background: var(--glow-green, rgba(74, 173, 74, 0.25));
+  border: 1px solid var(--accent-primary, #4aad4a);
+  color: var(--accent-lime, #8fdc00);
+}
+
+.wd-btn-amber {
+  background: var(--accent-amber, #f59e0b);
+  color: #0d0800;
+  box-shadow: 0 4px 16px var(--glow-amber, rgba(245, 158, 11, 0.25));
+}
+.wd-btn-amber:hover:not(:disabled) {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+.wd-btn-amber.active {
+  background: var(--glow-amber, rgba(245, 158, 11, 0.25));
+  border: 1px solid var(--accent-amber, #f59e0b);
+  color: var(--accent-amber, #f59e0b);
+}
+
+/* Panel styles – from master system */
+.wd-panel {
+  position: absolute;
+  top: calc(var(--topbar-h, 58px) + 14px);
+  right: 14px;
+  width: 400px;
+  max-height: calc(100% - var(--topbar-h, 58px) - 28px);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel, rgba(10, 31, 10, 0.94));
+  border: 1px solid var(--border, rgba(45, 138, 45, 0.25));
+  border-radius: var(--r-lg, 14px);
+  box-shadow: var(--shadow-panel, 0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px var(--border));
+  z-index: 1100;
+  overflow: hidden;
+  backdrop-filter: blur(20px);
+  animation: panel-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.wd-panel-header {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border, rgba(45, 138, 45, 0.25));
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  background: rgba(10, 31, 10, 0.6);
+}
+
+.wd-panel-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-sm, 6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  background: var(--panel-icon-bg, var(--glow-green, rgba(74, 173, 74, 0.25)));
+  border: 1px solid var(--panel-icon-border, var(--accent-primary, #4aad4a));
+  flex-shrink: 0;
+}
+
+.wd-panel-title {
+  font-family: var(--font-display, 'Barlow Condensed', sans-serif);
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-pri, #e8f5e8);
+  line-height: 1;
+}
+
+.wd-panel-sub {
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  font-size: 10px;
+  color: var(--text-sec, #7ab87a);
+  margin-top: 3px;
+}
+
+.wd-panel-close {
+  margin-left: auto;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--r-xs, 4px);
+  background: transparent;
+  border: 1px solid var(--border, rgba(45, 138, 45, 0.25));
+  color: var(--text-dim, #3d6e3d);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.wd-panel-close:hover {
+  background: var(--accent-red, #ef4444);
+  border-color: var(--accent-red, #ef4444);
+  color: white;
+}
+
+.wd-panel-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 16px;
+}
+
+/* Animation */
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(20px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+/* Fallback CSS variables – in case the master tokens are not loaded */
+:root {
+  --bg-root: #071407;
+  --bg-panel: rgba(10, 31, 10, 0.94);
+  --border: rgba(45, 138, 45, 0.25);
+  --text-pri: #e8f5e8;
+  --text-sec: #7ab87a;
+  --text-dim: #3d6e3d;
+  --accent-primary: #4aad4a;
+  --accent-amber: #f59e0b;
+  --accent-lime: #8fdc00;
+  --accent-red: #ef4444;
+  --glow-green: rgba(74, 173, 74, 0.25);
+  --glow-amber: rgba(245, 158, 11, 0.25);
+  --font-body: 'Barlow', sans-serif;
+  --font-display: 'Barlow Condensed', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --topbar-h: 58px;
+  --r-sm: 6px;
+  --r-lg: 14px;
+  --r-xs: 4px;
+  --shadow-panel: 0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px var(--border);
+}
