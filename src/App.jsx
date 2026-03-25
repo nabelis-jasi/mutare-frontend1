@@ -6,7 +6,6 @@ import Signup from "./components/Signup";
 import RequestAccess from "./components/RequestAccess";
 import Login from "./components/Login";
 import RoleSelection from "./components/RoleSelection";
-import Header from "./components/common/Header";
 
 // Role-based dashboards
 import CollectorDashboard from "./components/fieldCollector/CollectorDashboard";
