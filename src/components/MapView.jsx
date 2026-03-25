@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   MapContainer,
   Marker,
@@ -6,7 +6,6 @@ import {
   Polyline,
   useMap,
   useMapEvents,
-  TileLayer,
 } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
@@ -59,7 +58,7 @@ const TILES = {
   },
 };
 
-// ── Colors for manholes/pipes
+// ── Colors
 const manholeColor = (s) => {
   if (!s) return "#28a745";
   const v = s.toLowerCase();
@@ -67,10 +66,7 @@ const manholeColor = (s) => {
   if (v.includes("maintenance")) return "#ffc107";
   return "#28a745";
 };
-const pipeColor = (s) => {
-  if (!s) return "#2b7bff";
-  return s.toLowerCase().includes("block") ? "#dc3545" : "#2b7bff";
-};
+const pipeColor = (s) => (!s ? "#2b7bff" : s.toLowerCase().includes("block") ? "#dc3545" : "#2b7bff");
 
 // ── Manhole icon
 const manholeIcon = (color, size = 20) =>
@@ -86,7 +82,6 @@ const manholeIcon = (color, size = 20) =>
       display:flex;
       justify-content:center;
       align-items:center;
-      color:white;
       font-size:${size / 2}px;
     ">🕳️</div>`,
     iconSize: [size, size],
@@ -94,15 +89,13 @@ const manholeIcon = (color, size = 20) =>
     popupAnchor: [0, -(size / 2 + 4)],
   });
 
-// ── Parse GeoJSON geometry
+// ── Parse geometry
 const parsePoint = (geom) => {
   try {
     const g = typeof geom === "string" ? JSON.parse(geom) : geom;
     if (!g) return null;
-    if (g.type === "Point" && g.coordinates)
-      return { lat: g.coordinates[1], lng: g.coordinates[0] };
-    if (g.type === "MultiPoint" && g.coordinates?.length)
-      return { lat: g.coordinates[0][1], lng: g.coordinates[0][0] };
+    if (g.type === "Point") return { lat: g.coordinates[1], lng: g.coordinates[0] };
+    if (g.type === "MultiPoint") return { lat: g.coordinates[0][1], lng: g.coordinates[0][0] };
   } catch {}
   return null;
 };
@@ -110,21 +103,18 @@ const parseLine = (geom) => {
   try {
     const g = typeof geom === "string" ? JSON.parse(geom) : geom;
     if (!g) return null;
-    if (g.type === "LineString" && g.coordinates)
-      return g.coordinates.map(([x, y]) => [y, x]);
-    if (g.type === "MultiLineString" && g.coordinates)
-      return g.coordinates.flatMap((seg) => seg.map(([x, y]) => [y, x]));
+    if (g.type === "LineString") return g.coordinates.map(([x, y]) => [y, x]);
+    if (g.type === "MultiLineString") return g.coordinates.flatMap((seg) => seg.map(([x, y]) => [y, x]));
   } catch {}
   return null;
 };
 
-// ── TileManager for multiple overlays
+// ── Tile Manager
 function TileManager({ activeTiles }) {
   const map = useMap();
   const layerRefs = useRef({});
 
   useEffect(() => {
-    // Remove existing layers
     Object.values(layerRefs.current).forEach((l) => map.removeLayer(l));
     layerRefs.current = {};
 
@@ -133,264 +123,79 @@ function TileManager({ activeTiles }) {
       if (!t) return;
       const baseLayer = L.tileLayer(t.url, { attribution: t.attr, maxZoom: t.max }).addTo(map);
       layerRefs.current[tid] = baseLayer;
-
-      // Add overlay for hybrid
       if (tid === "hybrid" && t.overlayUrl) {
         const overlayLayer = L.tileLayer(t.overlayUrl, { opacity: 0.42 }).addTo(map);
         layerRefs.current["hybridOverlay"] = overlayLayer;
       }
     });
 
-    return () => {
-      Object.values(layerRefs.current).forEach((l) => map.removeLayer(l));
-      layerRefs.current = {};
-    };
+    return () => Object.values(layerRefs.current).forEach((l) => map.removeLayer(l));
   }, [activeTiles, map]);
 
   return null;
 }
 
-// ── MapBootstrap
+// ── Map events
 function MapBootstrap({ onMapReady, setCoords, pickMode, onMapClick }) {
   const map = useMap();
-  useEffect(() => {
-    if (onMapReady) onMapReady(map);
-  }, [map, onMapReady]);
+  useEffect(() => { if (onMapReady) onMapReady(map); }, [map, onMapReady]);
 
   useMapEvents({
-    mousemove(e) {
-      setCoords(`${e.latlng.lat.toFixed(6)}, ${e.latlng.lng.toFixed(6)}`);
-    },
-    click(e) {
-      if (pickMode && onMapClick) onMapClick(e.latlng.lat, e.latlng.lng);
-    },
+    mousemove(e) { setCoords(`${e.latlng.lat.toFixed(6)}, ${e.latlng.lng.toFixed(6)}`); },
+    click(e) { if (pickMode && onMapClick) onMapClick(e.latlng.lat, e.latlng.lng); },
   });
 
-  useEffect(() => {
-    map.getContainer().style.cursor = pickMode ? "crosshair" : "";
-  }, [map, pickMode]);
-
+  useEffect(() => { map.getContainer().style.cursor = pickMode ? "crosshair" : ""; }, [map, pickMode]);
   return null;
 }
 
-// ── Zoom reposition
+// ── Zoom control
 function ZoomReposition() {
   const map = useMap();
-  useEffect(() => {
-    map.zoomControl?.remove();
-    L.control.zoom({ position: "bottomright" }).addTo(map);
-  }, [map]);
+  useEffect(() => { map.zoomControl?.remove(); L.control.zoom({ position: "bottomright" }).addTo(map); }, [map]);
   return null;
 }
 
-// ── TileSelector cascading dashboard
+// ── TileSelector
 function TileSelector({ activeTiles, setActiveTiles }) {
   const [expanded, setExpanded] = useState(false);
-
-  const toggleTile = (id) => {
-    setActiveTiles((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
-  };
+  const toggleTile = (id) => setActiveTiles((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
 
   return (
-    <div
-      style={{
-        position: "absolute",
-        top: 12,
-        right: 12,
-        zIndex: 1000,
-        display: "flex",
-        flexDirection: "column",
-        gap: 4,
-        background: "rgba(7,20,7,0.88)",
-        borderRadius: 8,
-        padding: 6,
-      }}
-    >
-      <button
-        onClick={() => setExpanded(!expanded)}
-        style={{
-          cursor: "pointer",
-          fontWeight: 700,
-          fontSize: 12,
-          color: "#8fdc00",
-          background: "transparent",
-          border: "1px solid rgba(74,173,74,0.3)",
-          borderRadius: 6,
-          padding: "4px 6px",
-        }}
-      >
+    <div style={{ position: "absolute", top: 12, right: 12, zIndex: 1000, display: "flex", flexDirection: "column", gap: 4, background: "rgba(7,20,7,0.88)", borderRadius: 8, padding: 6 }}>
+      <button onClick={() => setExpanded(!expanded)} style={{ cursor: "pointer", fontWeight: 700, fontSize: 12, color: "#8fdc00", background: "transparent", border: "1px solid rgba(74,173,74,0.3)", borderRadius: 6, padding: "4px 6px" }}>
         🌐 Maps {expanded ? "▲" : "▼"}
       </button>
-      {expanded &&
-        Object.values(TILES).map((t) => (
-          <button
-            key={t.id}
-            onClick={() => toggleTile(t.id)}
-            style={{
-              cursor: "pointer",
-              fontSize: 11,
-              textAlign: "left",
-              padding: "4px 6px",
-              borderRadius: 6,
-              background: activeTiles.includes(t.id)
-                ? "#4aad4a"
-                : "transparent",
-              color: activeTiles.includes(t.id) ? "#011001" : "#7ab87a",
-              border: "none",
-            }}
-          >
-            {t.icon} {t.label}
-          </button>
-        ))}
+      {expanded && Object.values(TILES).map((t) => (
+        <button key={t.id} onClick={() => toggleTile(t.id)} style={{ cursor: "pointer", fontSize: 11, textAlign: "left", padding: "4px 6px", borderRadius: 6, background: activeTiles.includes(t.id) ? "#4aad4a" : "transparent", color: activeTiles.includes(t.id) ? "#011001" : "#7ab87a", border: "none" }}>
+          {t.icon} {t.label}
+        </button>
+      ))}
     </div>
   );
 }
-{/* ── LEGEND ───────────────────────────────────────────────────── */}
-{showLegend ? (
-  <div style={{
-    ...glass,
-    position: "absolute",
-    bottom: 36, left: 12,
-    zIndex: 900,
-    padding: "10px 14px",
-    minWidth: 210,
-  }}>
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-      <span style={{
-        fontFamily: "'Barlow Condensed',sans-serif",
-        fontSize: 11,
-        fontWeight: 800,
-        letterSpacing: "0.12em",
-        textTransform: "uppercase",
-        color: "#8fdc00"
-      }}>
-        Legend
-      </span>
-      <button onClick={() => setShowLegend(false)}
-        style={{
-          background: "none",
-          border: "none",
-          color: "#3d6e3d",
-          cursor: "pointer",
-          fontSize: 14,
-          padding: 0
-        }}>
-        ×
-      </button>
-    </div>
-    {[
-      { color: "#2b7bff", type: "line", label: "Pipeline — Normal" },
-      { color: "#dc3545", type: "line", label: "Pipeline — Blocked" },
-      { color: "#7F00FF", type: "manhole", label: "Manhole — Normal" },
-      { color: "#FFA500", type: "manhole", label: "Manhole — Maintenance" },
-      { color: "#FF0000", type: "manhole", label: "Manhole — Blocked" },
-    ].map((item) => (
-      <div key={item.label} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
-        {item.type === "line"
-          ? <div style={{ width: 22, height: 4, borderRadius: 2, background: item.color, flexShrink: 0 }} />
-          : <div style={{
-              width: 16,
-              height: 16,
-              borderRadius: "50%",
-              background: item.color,
-              border: "2px solid white",
-              boxShadow: "0 2px 4px rgba(0,0,0,0.3)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 7,
-              flexShrink: 0,
-            }}>🕳️</div>
-        }
-        <span style={{ fontSize: 11, color: "#b8dcb8" }}>{item.label}</span>
-      </div>
-    ))}
-  </div>
-) : (
-  <button
-    onClick={() => setShowLegend(true)}
-    style={{
-      ...glass,
-      position: "absolute", bottom: 36, left: 12, zIndex: 900,
-      padding: "5px 12px", cursor: "pointer",
-      border: "1px solid rgba(45,138,45,0.25)",
-      fontFamily: "'Barlow Condensed',sans-serif",
-      fontSize: 11, fontWeight: 700,
-      letterSpacing: "0.08em", textTransform: "uppercase",
-      color: "#7ab87a",
-    }}
-  >
-    📋 Legend
-  </button>
-)}
-// ═════════════════════════════════════════════════════════════════════════
-export default function MapView({
-  manholes = [],
-  pipes = [],
-  role,
-  userId,
-  onFeatureClick,
-  onMapReady,
-  navPickMode = false,
-  onNavMapClick,
-}) {
+
+// ── MapView
+export default function MapView({ manholes = [], pipes = [], role, userId, onFeatureClick, onMapReady, navPickMode = false, onNavMapClick }) {
   const [coords, setCoords] = useState("");
   const [activeTiles, setActiveTiles] = useState(["osm"]);
   const [showLegend, setShowLegend] = useState(true);
 
-  const glass = {
-    background: "rgba(7,20,7,0.88)",
-    backdropFilter: "blur(12px)",
-    WebkitBackdropFilter: "blur(12px)",
-    border: "1px solid rgba(45,138,45,0.25)",
-    borderRadius: 10,
-    color: "#e8f5e8",
-    fontFamily: "'Barlow',sans-serif",
-  };
+  const glass = { background: "rgba(7,20,7,0.88)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", border: "1px solid rgba(45,138,45,0.25)", borderRadius: 10, color: "#e8f5e8", fontFamily: "'Barlow',sans-serif" };
 
   const buildTable = (rows) => (
     <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
-      <tbody>
-        {rows.filter(Boolean).map(([k, v]) => (
-          <tr key={k}>
-            <td style={{ padding: "3px 8px 3px 0", color: "#555", fontWeight: 600 }}>{k}</td>
-            <td style={{ padding: "3px 0", color: "#111" }}>{v}</td>
-          </tr>
-        ))}
-      </tbody>
+      <tbody>{rows.filter(Boolean).map(([k, v]) => (<tr key={k}><td style={{ padding: "3px 8px 3px 0", color: "#555", fontWeight: 600 }}>{k}</td><td style={{ padding: "3px 0", color: "#111" }}>{v}</td></tr>))}</tbody>
     </table>
   );
 
-  const editBtn = (feature) =>
-    onFeatureClick ? (
-      <button
-        onClick={() => onFeatureClick(feature)}
-        style={{
-          marginTop: 10,
-          width: "100%",
-          background: "#1a4d1a",
-          color: "white",
-          border: "1px solid #2d8a2d",
-          borderRadius: 6,
-          padding: "7px 0",
-          cursor: "pointer",
-          fontWeight: 700,
-          fontSize: 12,
-          textTransform: "uppercase",
-        }}
-      >
-        ✏️ Edit Record
-      </button>
-    ) : null;
+  const editBtn = (feature) => onFeatureClick ? (
+    <button onClick={() => onFeatureClick(feature)} style={{ marginTop: 10, width: "100%", background: "#1a4d1a", color: "white", border: "1px solid #2d8a2d", borderRadius: 6, padding: "7px 0", cursor: "pointer", fontWeight: 700, fontSize: 12, textTransform: "uppercase" }}>
+      ✏️ Edit Record
+    </button>
+  ) : null;
 
-  const popupHeader = (dot, label) => (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-      {dot}
-      <span style={{ fontWeight: 800, fontSize: 14, textTransform: "uppercase" }}>{label}</span>
-    </div>
-  );
+  const popupHeader = (dot, label) => (<div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>{dot}<span style={{ fontWeight: 800, fontSize: 14, textTransform: "uppercase" }}>{label}</span></div>);
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
@@ -408,11 +213,7 @@ export default function MapView({
               <Popup maxWidth={280}>
                 <div>
                   {popupHeader(<div style={{ width: 14, height: 14, borderRadius: "50%", background: color }} />, m.manhole_id || `MH-${m.gid}`)}
-                  {buildTable([
-                    ["Pipe ID", m.pipe_id || "—"],
-                    ["Depth", m.mh_depth ? `${m.mh_depth} m` : "—"],
-                    ["Status", m.bloc_stat || "Normal"],
-                  ])}
+                  {buildTable([["Pipe ID", m.pipe_id || "—"], ["Depth", m.mh_depth ? `${m.mh_depth} m` : "—"], ["Status", m.bloc_stat || "Normal"]])}
                   {editBtn({ ...m, type: "manhole" })}
                 </div>
               </Popup>
@@ -429,13 +230,7 @@ export default function MapView({
               <Popup maxWidth={280}>
                 <div>
                   {popupHeader(<div style={{ width: 22, height: 4, background: color }} />, p.pipe_id || `PL-${p.gid}`)}
-                  {buildTable([
-                    ["Start MH", p.start_mh || "—"],
-                    ["End MH", p.end_mh || "—"],
-                    ["Material", p.pipe_mat || "—"],
-                    ["Size", p.pipe_size || "—"],
-                    ["Status", p.block_stat || "Normal"],
-                  ])}
+                  {buildTable([["Start MH", p.start_mh || "—"], ["End MH", p.end_mh || "—"], ["Material", p.pipe_mat || "—"], ["Size", p.pipe_size || "—"], ["Status", p.block_stat || "Normal"]])}
                   {editBtn({ ...p, type: "pipeline" })}
                 </div>
               </Popup>
@@ -447,10 +242,10 @@ export default function MapView({
       <TileSelector activeTiles={activeTiles} setActiveTiles={setActiveTiles} />
 
       {showLegend && (
-        <div style={{ ...glass, position: "absolute", bottom: 36, left: 12, padding: 10 }}>
+        <div style={{ ...glass, position: "absolute", bottom: 36, left: 12, padding: 10, minWidth: 210, zIndex: 900 }}>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
             <span style={{ fontWeight: 800, fontSize: 11, color: "#8fdc00" }}>Legend</span>
-            <button onClick={() => setShowLegend(false)} style={{ background: "none", border: "none", color: "#3d6e3d" }}>×</button>
+            <button onClick={() => setShowLegend(false)} style={{ background: "none", border: "none", color: "#3d6e3d", cursor: "pointer" }}>×</button>
           </div>
           {[{ color: "#2b7bff", type: "line", label: "Pipeline — Normal" },
             { color: "#dc3545", type: "line", label: "Pipeline — Blocked" },
@@ -465,11 +260,7 @@ export default function MapView({
         </div>
       )}
 
-      {coords && (
-        <div style={{ ...glass, position: "absolute", bottom: 8, right: 90, padding: "4px 12px", fontSize: 11, color: "#7ab87a" }}>
-          📍 {coords}
-        </div>
-      )}
+      {coords && <div style={{ ...glass, position: "absolute", bottom: 8, right: 90, padding: "4px 12px", fontSize: 11, color: "#7ab87a" }}>📍 {coords}</div>}
     </div>
   );
 }
