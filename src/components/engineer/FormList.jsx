@@ -65,11 +65,7 @@ export default function FormList({ onSelectForm, onClose, onCreateNew }) {
       marginTop: "1rem",
       fontWeight: "bold",
     },
-    emptyMsg: {
-      textAlign: "center",
-      color: "#666",
-      padding: "1rem",
-    },
+    emptyMsg: { textAlign: "center", color: "#666", padding: "1rem" },
   };
 
   if (loading) return <div style={styles.container}><div style={styles.header}>Loading forms...</div></div>;
