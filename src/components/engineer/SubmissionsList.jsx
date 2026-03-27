@@ -1,247 +1,213 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../supabaseClient';
 
-export default function SubmissionsList({ onClose, onRefresh }) {
-  const [submissions, setSubmissions] = useState([]);
-  const [forms, setForms] = useState([]);
-  const [selectedFormId, setSelectedFormId] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [updating, setUpdating] = useState(null);
+const STATUS_ORDER = ['pending', 'approved', 'cleaned', 'rejected'];
 
-  useEffect(() => {
-    fetchForms();
-    fetchSubmissions();
-  }, [selectedFormId]);
+export default function SubmissionsList({ onClose, onRefresh }) {
+  const [submissions,    setSubmissions]    = useState([]);
+  const [forms,          setForms]          = useState([]);
+  const [selectedFormId, setSelectedFormId] = useState('');
+  const [filterStatus,   setFilterStatus]   = useState('all');
+  const [loading,        setLoading]        = useState(true);
+  const [updating,       setUpdating]       = useState(null);
+  const [expanded,       setExpanded]       = useState(null);
+
+  useEffect(() => { fetchForms(); }, []);
+  useEffect(() => { fetchSubmissions(); }, [selectedFormId, filterStatus]);
 
   const fetchForms = async () => {
-    const { data } = await supabase
-      .from('forms')
-      .select('id, title')
-      .order('created_at', { ascending: false });
+    const { data } = await supabase.from('forms').select('id, title').order('created_at', { ascending: false });
     setForms(data || []);
   };
 
   const fetchSubmissions = async () => {
     setLoading(true);
-    let query = supabase
+    let q = supabase
       .from('form_submissions')
-      .select(`
-        id,
-        form_id,
-        collector_id,
-        data,
-        location,
-        submitted_at,
-        status,
-        cleaned_data,
-        engineer_notes
-      `)
+      .select('id, form_id, collector_id, data, location, submitted_at, status, cleaned_data, engineer_notes')
       .order('submitted_at', { ascending: false });
+    if (selectedFormId)            q = q.eq('form_id', selectedFormId);
+    if (filterStatus !== 'all')    q = q.eq('status', filterStatus);
 
-    if (selectedFormId) {
-      query = query.eq('form_id', selectedFormId);
-    }
-
-    const { data, error } = await query;
-    if (!error) {
-      setSubmissions(data || []);
-    }
+    const { data, error } = await q;
+    if (!error) setSubmissions(data || []);
     setLoading(false);
   };
 
-  const updateStatus = async (id, newStatus, cleanedData = null) => {
+  const updateStatus = async (id, newStatus) => {
     setUpdating(id);
-    const update = { status: newStatus };
-    if (cleanedData) update.cleaned_data = cleanedData;
-
     const { error } = await supabase
       .from('form_submissions')
-      .update(update)
+      .update({ status: newStatus })
       .eq('id', id);
-
-    if (!error) {
-      if (onRefresh) onRefresh();
-      fetchSubmissions();
-    } else {
-      alert('Error updating: ' + error.message);
-    }
+    if (!error) { onRefresh?.(); fetchSubmissions(); }
+    else alert('Error: ' + error.message);
     setUpdating(null);
   };
 
-  const styles = {
-    container: {
-      position: "absolute",
-      top: "80px",
-      right: "20px",
-      width: "500px",
-      maxWidth: "90vw",
-      backgroundColor: "white",
-      borderRadius: "12px",
-      boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-      zIndex: 1000,
-      overflow: "hidden",
-    },
-    header: {
-      padding: "1rem",
-      backgroundColor: "#f59e0b",
-      color: "white",
-      fontWeight: "bold",
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-    },
-    content: {
-      padding: "1rem",
-      maxHeight: "70vh",
-      overflowY: "auto",
-    },
-    filterBar: {
-      marginBottom: "1rem",
-      display: "flex",
-      gap: "0.5rem",
-    },
-    select: {
-      flex: 1,
-      padding: "0.5rem",
-      borderRadius: "4px",
-      border: "1px solid #ccc",
-    },
-    submissionItem: {
-      border: "1px solid #eee",
-      borderRadius: "8px",
-      padding: "0.75rem",
-      marginBottom: "0.75rem",
-      backgroundColor: "#fafafa",
-    },
-    meta: {
-      fontSize: "0.8rem",
-      color: "#666",
-      marginBottom: "0.5rem",
-      display: "flex",
-      justifyContent: "space-between",
-    },
-    dataPreview: {
-      fontSize: "0.85rem",
-      marginBottom: "0.5rem",
-      background: "#f0f0f0",
-      padding: "0.5rem",
-      borderRadius: "4px",
-      whiteSpace: "pre-wrap",
-    },
-    actions: {
-      display: "flex",
-      gap: "0.5rem",
-      marginTop: "0.5rem",
-    },
-    button: {
-      padding: "0.25rem 0.75rem",
-      border: "none",
-      borderRadius: "4px",
-      cursor: "pointer",
-    },
-    approveBtn: { backgroundColor: "#4caf50", color: "white" },
-    rejectBtn: { backgroundColor: "#f44336", color: "white" },
-    pendingBtn: { backgroundColor: "#ff9800", color: "white" },
-    closeBtn: { background: "none", border: "none", color: "white", fontSize: "1.2rem", cursor: "pointer" },
-    statusBadge: {
-      padding: "2px 8px",
-      borderRadius: "12px",
-      fontSize: "0.7rem",
-      fontWeight: "bold",
-      textTransform: "uppercase",
-    },
-  };
+  const formTitle = (fid) => forms.find(f => f.id === fid)?.title || 'Unknown form';
 
-  const getStatusBadge = (status) => {
-    const colors = {
-      pending: { background: "#ff9800", color: "white" },
-      approved: { background: "#4caf50", color: "white" },
-      rejected: { background: "#f44336", color: "white" },
-      cleaned: { background: "#2196f3", color: "white" },
-    };
-    const style = colors[status] || colors.pending;
-    return <span style={{ ...styles.statusBadge, ...style }}>{status}</span>;
-  };
-
-  const getFormTitle = (formId) => {
-    const form = forms.find(f => f.id === formId);
-    return form ? form.title : 'Unknown form';
+  const counts = {
+    all:      submissions.length,
+    pending:  submissions.filter(s => s.status === 'pending').length,
+    approved: submissions.filter(s => s.status === 'approved').length,
+    rejected: submissions.filter(s => s.status === 'rejected').length,
+    cleaned:  submissions.filter(s => s.status === 'cleaned').length,
   };
 
   return (
-    <div style={styles.container}>
-      <div style={styles.header}>
-        <span>📋 Submissions</span>
-        {onClose && <button style={styles.closeBtn} onClick={onClose}>✕</button>}
-      </div>
-      <div style={styles.content}>
-        <div style={styles.filterBar}>
-          <select
-            style={styles.select}
-            value={selectedFormId}
-            onChange={(e) => setSelectedFormId(e.target.value)}
-          >
-            <option value="">All Forms</option>
-            {forms.map(f => (
-              <option key={f.id} value={f.id}>{f.title}</option>
-            ))}
-          </select>
+    <div className="wd-panel" style={{ '--panel-icon-bg': 'rgba(245,158,11,0.08)', '--panel-icon-border': 'rgba(245,158,11,0.25)' }}>
+      <div className="wd-panel-header">
+        <div className="wd-panel-icon">📋</div>
+        <div>
+          <div className="wd-panel-title">Submissions</div>
+          <div className="wd-panel-sub">
+            {counts.pending > 0 ? `${counts.pending} pending review` : 'Review collector submissions'}
+          </div>
         </div>
+        <button className="wd-panel-close" onClick={onClose}>×</button>
+      </div>
 
+      {/* Stats row */}
+      <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', background: 'rgba(10,31,10,0.4)', display: 'flex', gap: 6 }}>
+        {[
+          { lbl: 'Total',    val: counts.all,      cls: 'sky'   },
+          { lbl: 'Pending',  val: counts.pending,  cls: counts.pending > 0 ? 'amber' : 'green' },
+          { lbl: 'Approved', val: counts.approved, cls: 'green' },
+          { lbl: 'Rejected', val: counts.rejected, cls: counts.rejected > 0 ? 'red' : '' },
+        ].map(s => (
+          <div key={s.lbl} className={`wd-stat ${s.cls}`} style={{ flex: 1 }}>
+            <div className="s-num" style={{ fontSize: 18 }}>{s.val}</div>
+            <div className="s-lbl">{s.lbl}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Filter tabs */}
+      <div className="wd-tabs">
+        {['all', 'pending', 'approved', 'rejected'].map(s => (
+          <button key={s} className={`wd-tab${filterStatus === s ? ' active' : ''}`}
+            onClick={() => setFilterStatus(s)}>
+            {s.charAt(0).toUpperCase() + s.slice(1)}
+            {counts[s] > 0 && <span style={{ marginLeft: 4, fontFamily: 'var(--font-mono)', fontSize: 9, opacity: 0.8 }}>({counts[s]})</span>}
+          </button>
+        ))}
+      </div>
+
+      {/* Form filter */}
+      <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)' }}>
+        <select className="wd-select" value={selectedFormId} onChange={e => setSelectedFormId(e.target.value)}>
+          <option value="">All Forms</option>
+          {forms.map(f => <option key={f.id} value={f.id}>{f.title}</option>)}
+        </select>
+      </div>
+
+      <div className="wd-panel-body">
         {loading ? (
-          <div>Loading submissions...</div>
+          <div style={{ textAlign: 'center', padding: 32, fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-sec)' }}>
+            ⟳ Loading submissions…
+          </div>
         ) : submissions.length === 0 ? (
-          <div>No submissions found.</div>
+          <div style={{ textAlign: 'center', padding: 32 }}>
+            <div style={{ fontSize: 32, marginBottom: 8 }}>📭</div>
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-sec)' }}>No submissions</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-dim)', marginTop: 4 }}>No results for current filters</div>
+          </div>
         ) : (
-          submissions.map(sub => (
-            <div key={sub.id} style={styles.submissionItem}>
-              <div style={styles.meta}>
-                <strong>{getFormTitle(sub.form_id)}</strong>
-                {getStatusBadge(sub.status)}
-              </div>
-              <div style={styles.meta}>
-                <span>Submitted: {new Date(sub.submitted_at).toLocaleString()}</span>
-                <span>Collector ID: {sub.collector_id?.slice(0,8)}…</span>
-              </div>
-              <div style={styles.dataPreview}>
-                <strong>Data:</strong><br />
-                {JSON.stringify(sub.data, null, 2)}
-              </div>
-              {sub.cleaned_data && (
-                <div style={styles.dataPreview}>
-                  <strong>Cleaned Data:</strong><br />
-                  {JSON.stringify(sub.cleaned_data, null, 2)}
+          submissions.map(sub => {
+            const isOpen = expanded === sub.id;
+            return (
+              <div
+                key={sub.id}
+                className={`wd-sub-item${sub.status !== 'pending' ? ` ${sub.status}` : ''}`}
+              >
+                {/* Header row */}
+                <div className="si-top">
+                  <div className="si-form-name">{formTitle(sub.form_id)}</div>
+                  <span className={`wd-sub-badge ${sub.status}`}>{sub.status}</span>
                 </div>
-              )}
-              <div style={styles.actions}>
-                {sub.status === 'pending' && (
+
+                {/* Meta */}
+                <div className="si-meta">
+                  <span className="si-meta-item">🕐 {new Date(sub.submitted_at).toLocaleString()}</span>
+                  <span className="si-meta-item">👤 {sub.collector_id?.slice(0,8)}…</span>
+                </div>
+
+                {/* Expand toggle */}
+                <button
+                  onClick={() => setExpanded(isOpen ? null : sub.id)}
+                  style={{
+                    background: 'none', border: 'none',
+                    fontFamily: 'var(--font-mono)', fontSize: 10,
+                    color: 'var(--text-sec)', cursor: 'pointer',
+                    padding: '4px 0', marginBottom: isOpen ? 8 : 0,
+                    display: 'flex', alignItems: 'center', gap: 4,
+                  }}
+                >
+                  {isOpen ? '▲ Hide data' : '▼ Show data'}
+                </button>
+
+                {/* Expanded data */}
+                {isOpen && (
                   <>
+                    <div className="si-data-preview">
+                      {JSON.stringify(sub.data, null, 2)}
+                    </div>
+                    {sub.cleaned_data && (
+                      <>
+                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--accent-sky)', marginBottom: 4 }}>
+                          Cleaned Data
+                        </div>
+                        <div className="si-data-preview" style={{ borderColor: 'rgba(34,211,238,0.2)' }}>
+                          {JSON.stringify(sub.cleaned_data, null, 2)}
+                        </div>
+                      </>
+                    )}
+                  </>
+                )}
+
+                {/* Actions */}
+                {sub.status === 'pending' && (
+                  <div className="wd-sub-actions">
                     <button
-                      style={{ ...styles.button, ...styles.approveBtn }}
-                      onClick={() => updateStatus(sub.id, 'approved', sub.data)}
+                      className="wd-btn wd-btn-primary"
+                      onClick={() => updateStatus(sub.id, 'approved')}
                       disabled={updating === sub.id}
                     >
-                      Approve
+                      ✓ Approve
                     </button>
                     <button
-                      style={{ ...styles.button, ...styles.rejectBtn }}
+                      className="wd-btn wd-btn-danger"
                       onClick={() => updateStatus(sub.id, 'rejected')}
                       disabled={updating === sub.id}
                     >
-                      Reject
+                      ✗ Reject
                     </button>
-                    {/* Optionally add a "Clean" button that opens a modal */}
-                  </>
+                  </div>
                 )}
+
                 {sub.status === 'approved' && (
-                  <span>✅ Approved</span>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--accent-primary)', marginTop: 4 }}>
+                    ✓ Approved · data pushed to network
+                  </div>
                 )}
+
                 {sub.status === 'rejected' && (
-                  <span>❌ Rejected</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--accent-red)' }}>✗ Rejected</span>
+                    <button
+                      className="wd-btn wd-btn-ghost"
+                      style={{ padding: '3px 10px', fontSize: 10 }}
+                      onClick={() => updateStatus(sub.id, 'pending')}
+                      disabled={updating === sub.id}
+                    >
+                      ↩ Reopen
+                    </button>
+                  </div>
                 )}
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>
