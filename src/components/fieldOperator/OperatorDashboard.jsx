@@ -2,12 +2,13 @@ import React, { useState } from 'react';
 import MapView from '../MapView';
 import StatusUpdater from './StatusUpdater';
 import MaintenanceRecords from './MaintenanceRecords';
+import AssetEditor from './AssetEditor';           // <-- new import
 import OperatorProfilePanel from './OperatorProfilePanel';
 import OperatorSettingsPanel from './OperatorSettingsPanel';
 import './Dashboard.css';
 
 export default function OperatorDashboard({ manholes, pipes, userId, role, onDataRefresh }) {
-  const [activePanel, setActivePanel] = useState(null); // 'status', 'maintenance', 'profile', 'settings'
+  const [activePanel, setActivePanel] = useState(null); // 'status', 'maintenance', 'edit', 'profile', 'settings'
   const [mapInstance, setMapInstance] = useState(null);
   const [navPickMode, setNavPickMode] = useState(false);
   const [selectedFeature, setSelectedFeature] = useState(null);
@@ -31,9 +32,15 @@ export default function OperatorDashboard({ manholes, pipes, userId, role, onDat
     setActivePanel(null);
   };
 
+  const handleEditSubmitted = () => {
+    if (onDataRefresh) onDataRefresh();
+    setActivePanel(null);
+  };
+
   const tools = [
     { id: 'status', label: 'STATUS', desc: 'Update manhole/pipeline condition', icon: '📝', color: 'var(--accent-primary)' },
     { id: 'maintenance', label: 'MAINT', desc: 'View maintenance history & schedule', icon: '🔧', color: 'var(--accent-amber)' },
+    { id: 'edit', label: 'EDIT', desc: 'Edit location, inspector, dates', icon: '✏️', color: '#ff9800' },   // <-- new tool
     { id: 'profile', label: 'PROFILE', desc: 'User profile', icon: '👤', color: 'var(--accent-primary)' },
     { id: 'settings', label: 'SETTINGS', desc: 'App settings', icon: '⚙️', color: 'var(--accent-lime)' },
   ];
@@ -152,6 +159,14 @@ export default function OperatorDashboard({ manholes, pipes, userId, role, onDat
             <MaintenanceRecords userId={userId} />
           </div>
         </div>
+      )}
+
+      {/* NEW: Asset Editor Panel */}
+      {activePanel === 'edit' && (
+        <AssetEditor
+          userId={userId}
+          onEditSubmitted={handleEditSubmitted}
+        />
       )}
 
       {activePanel === 'profile' && (
