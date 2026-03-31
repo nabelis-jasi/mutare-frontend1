@@ -1,4 +1,5 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { supabase } from '../../supabaseClient';
 import MapView from '../MapView';
 import DataEditor from './DataEditor';
 import ShapefileUploader from './ShapefileUploader';
@@ -11,15 +12,27 @@ import SettingsPanel from './SettingsPanel';
 import FormBuilder from './FormBuilder';
 import FormList from './FormList';
 import SubmissionsList from './SubmissionsList';
-import PendingEdits from './PendingEdits';            // <-- new import
+import PendingEdits from './PendingEdits';
 import './Dashboard.css';
 
 export default function EngineerDashboard({ manholes, pipes, userId, role, onDataRefresh, userProfile }) {
   const [activePanel, setActivePanel] = useState(null);
   const [selectedFeature, setFeature] = useState(null);
-  const [selectedForm, setSelectedForm] = useState(null);
+  const [selectedForm, setSelectedForm] = useState(null); // for editing a form
   const [mapInstance, setMapInstance] = useState(null);
+  const [pendingEditCount, setPendingEditCount] = useState(0);
 
+  // Fetch pending edit count for badge
+  useEffect(() => { fetchPendingCount(); }, []);
+  const fetchPendingCount = async () => {
+    const { count } = await supabase
+      .from('asset_edits')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'pending');
+    setPendingEditCount(count ?? 0);
+  };
+
+  // Navigation pick-mode bridge
   const [navPickMode, setNavPickMode] = useState(false);
   const navToolRef = useRef(null);
 
@@ -41,7 +54,7 @@ export default function EngineerDashboard({ manholes, pipes, userId, role, onDat
 
   const toggle = (id) => {
     setActivePanel(prev => prev === id ? null : id);
-    setSelectedForm(null);
+    setSelectedForm(null); // reset when switching panels
   };
 
   const handleSelectForm = (form) => {
@@ -51,9 +64,10 @@ export default function EngineerDashboard({ manholes, pipes, userId, role, onDat
 
   const handleFormSaved = () => {
     setSelectedForm(null);
-    onDataRefresh();
+    onDataRefresh(); // optional
   };
 
+  // Tool rail definitions
   const tools = [
     { id: 'home',        icon: '🏠', label: 'Home',        color: '#4aad4a', desc: 'Overview & stats' },
     { id: 'nav',         icon: '🧭', label: 'Navigate',    color: '#22d3ee', desc: 'GPS routing' },
@@ -63,13 +77,13 @@ export default function EngineerDashboard({ manholes, pipes, userId, role, onDat
     { id: 'flags',       icon: '🚩', label: 'Flags',       color: '#f59e0b', desc: 'Review issues' },
     { id: 'formBuilder', icon: '📝', label: 'Forms',       color: '#8fdc00', desc: 'Create/edit forms' },
     { id: 'submissions', icon: '📋', label: 'Submissions', color: '#f59e0b', desc: 'Review submissions' },
-    { id: 'pendingEdits', icon: '✏️', label: 'Edits',      color: '#ff9800', desc: 'Review asset edits' }, // <-- new tool
+    { id: 'pendingEdits',icon: '🔖', label: 'Edits',       color: '#f59e0b', desc: 'Pending asset edits', badge: pendingEditCount },
   ];
 
   return (
     <div className="wd-root">
 
-      {/* TOP BAR (unchanged) */}
+      {/* TOP BAR */}
       <header className="wd-topbar">
         <div className="wd-brand">
           <div className="wd-brand-logo">🪣</div>
@@ -126,18 +140,28 @@ export default function EngineerDashboard({ manholes, pipes, userId, role, onDat
               onClick={() => toggle(t.id)}
               title={`${t.label} — ${t.desc}`}
             >
-              <span style={{ fontSize: 18, lineHeight: 1, display: 'block' }}>{t.icon}</span>
+              {/* Badge for pending count */}
+              {t.badge > 0 && (
+                <span className="wd-rail-badge">{t.badge > 99 ? '99+' : t.badge}</span>
+              )}
+              {/* Icon */}
+              <span style={{ fontSize: 16, lineHeight: 1, display: 'block' }}>{t.icon}</span>
+              {/* Label */}
               <span style={{
-                display: 'block',
-                fontFamily: 'var(--font-display)',
-                fontSize: 8,
-                fontWeight: 700,
-                letterSpacing: '0.08em',
-                textTransform: 'uppercase',
-                color: activePanel === t.id ? 'var(--text-pri)' : 'var(--text-dim)',
-                marginTop: 2,
-                lineHeight: 1,
-                textAlign: 'center',
+                display:        'block',
+                fontFamily:     'var(--font-display)',
+                fontSize:       7,
+                fontWeight:     700,
+                letterSpacing:  '0.06em',
+                textTransform:  'uppercase',
+                color:          activePanel === t.id ? 'var(--text-pri)' : 'var(--text-dim)',
+                marginTop:      1,
+                lineHeight:     1,
+                textAlign:      'center',
+                whiteSpace:     'nowrap',
+                overflow:       'hidden',
+                maxWidth:       '42px',
+                textOverflow:   'ellipsis',
               }}>
                 {t.label}
               </span>
@@ -195,22 +219,22 @@ export default function EngineerDashboard({ manholes, pipes, userId, role, onDat
 
       {/* FORMS: list or builder */}
       {activePanel === 'formBuilder' && (
-        <>
-          {!selectedForm ? (
-            <FormList
-              onSelectForm={handleSelectForm}
-              onClose={() => setActivePanel(null)}
-              onCreateNew={() => setSelectedForm({})}
-            />
-          ) : (
-            <FormBuilder
-              form={selectedForm}
-              onSaved={handleFormSaved}
-              onCancel={() => setSelectedForm(null)}
-            />
-          )}
-        </>
-      )}
+  <>
+    {!selectedForm ? (
+      <FormList
+        onSelectForm={handleSelectForm}
+        onClose={() => setActivePanel(null)}
+        onCreateNew={() => setSelectedForm({})}
+      />
+    ) : (
+      <FormBuilder
+        form={selectedForm}
+        onSaved={handleFormSaved}
+        onCancel={() => setSelectedForm(null)}
+      />
+    )}
+  </>
+)}
 
       {/* SUBMISSIONS REVIEW */}
       {activePanel === 'submissions' && (
@@ -220,10 +244,11 @@ export default function EngineerDashboard({ manholes, pipes, userId, role, onDat
         />
       )}
 
-      {/* NEW: PENDING ASSET EDITS */}
+      {/* PENDING ASSET EDITS */}
       {activePanel === 'pendingEdits' && (
         <PendingEdits
           onClose={() => setActivePanel(null)}
+          onEditProcessed={() => { fetchPendingCount(); onDataRefresh(); }}
         />
       )}
 
