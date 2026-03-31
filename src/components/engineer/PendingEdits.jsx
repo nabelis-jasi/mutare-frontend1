@@ -1,39 +1,43 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../supabaseClient';
 
-export default function PendingEdits({ onClose }) {
-  const [edits, setEdits] = useState([]);
-  const [loading, setLoading] = useState(true);
+export default function PendingEdits({ onClose, onEditProcessed }) {
+  const [edits,      setEdits]      = useState([]);
+  const [loading,    setLoading]    = useState(true);
   const [processing, setProcessing] = useState(null);
+  const [expanded,   setExpanded]   = useState(null);
+  const [stats,      setStats]      = useState({ total: 0, manholes: 0, pipelines: 0 });
 
-  useEffect(() => {
-    fetchPending();
-  }, []);
+  useEffect(() => { fetchPending(); }, []);
 
   const fetchPending = async () => {
-    const { data } = await supabase
+    setLoading(true);
+    const { data, error } = await supabase
       .from('asset_edits')
       .select('*')
       .eq('status', 'pending')
       .order('created_at', { ascending: true });
-    setEdits(data || []);
+
+    const rows = data || [];
+    setEdits(rows);
+    setStats({
+      total:     rows.length,
+      manholes:  rows.filter(e => e.feature_type === 'manhole').length,
+      pipelines: rows.filter(e => e.feature_type === 'pipeline').length,
+    });
     setLoading(false);
   };
 
   const approveEdit = async (edit) => {
     setProcessing(edit.id);
-    const table = edit.feature_type === 'manhole' ? 'waste_water_manhole' : 'waste_water_pipeline';
-    const updateData = edit.proposed_data;
+    const table = edit.feature_type === 'manhole'
+      ? 'waste_water_manhole'
+      : 'waste_water_pipeline';
 
-    // Convert location from JSON to PostGIS if present
-    if (updateData.location && typeof updateData.location === 'string' && updateData.location.startsWith('POINT')) {
-      // keep as is; the column expects geometry
-    }
-
-    // Update main table
+    // Apply the proposed changes to the main table
     const { error: updateError } = await supabase
       .from(table)
-      .update(updateData)
+      .update(edit.proposed_data)
       .eq('id', edit.feature_id);
 
     if (updateError) {
@@ -42,86 +46,180 @@ export default function PendingEdits({ onClose }) {
       return;
     }
 
-    // Mark edit as approved
-    const { error: editError } = await supabase
+    // Mark edit record as approved
+    const { data: { user } } = await supabase.auth.getUser();
+    await supabase
       .from('asset_edits')
       .update({
-        status: 'approved',
-        reviewed_by: (await supabase.auth.getUser()).data.user.id,
-        reviewed_at: new Date().toISOString()
+        status:      'approved',
+        reviewed_by: user.id,
+        reviewed_at: new Date().toISOString(),
       })
       .eq('id', edit.id);
 
-    if (editError) {
-      alert(`Error marking approved: ${editError.message}`);
-    }
-
     fetchPending();
+    onEditProcessed?.();
     setProcessing(null);
   };
 
   const rejectEdit = async (edit) => {
-    if (!confirm('Reject this edit?')) return;
+    if (!confirm('Reject this proposed edit?')) return;
     setProcessing(edit.id);
+
+    const { data: { user } } = await supabase.auth.getUser();
     await supabase
       .from('asset_edits')
-      .update({ status: 'rejected', reviewed_by: (await supabase.auth.getUser()).data.user.id, reviewed_at: new Date().toISOString() })
+      .update({
+        status:      'rejected',
+        reviewed_by: user.id,
+        reviewed_at: new Date().toISOString(),
+      })
       .eq('id', edit.id);
+
     fetchPending();
+    onEditProcessed?.();
     setProcessing(null);
   };
 
-  const styles = {
-    container: {
-      position: "absolute",
-      top: "80px",
-      right: "20px",
-      width: "500px",
-      backgroundColor: "white",
-      borderRadius: "12px",
-      boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-      zIndex: 1000,
-      overflow: "hidden",
-    },
-    header: { padding: "1rem", backgroundColor: "#f59e0b", color: "white", fontWeight: "bold", display: "flex", justifyContent: "space-between", alignItems: "center" },
-    closeBtn: { background: "none", border: "none", color: "white", fontSize: "1.2rem", cursor: "pointer" },
-    content: { padding: "1rem", maxHeight: "70vh", overflowY: "auto" },
-    editItem: { border: "1px solid #eee", borderRadius: "8px", padding: "0.75rem", marginBottom: "0.75rem", backgroundColor: "#fafafa" },
-    meta: { fontSize: "0.8rem", color: "#666", marginBottom: "0.5rem" },
-    data: { fontSize: "0.85rem", marginBottom: "0.5rem", background: "#f0f0f0", padding: "0.5rem", borderRadius: "4px" },
-    buttons: { display: "flex", gap: "0.5rem", marginTop: "0.5rem" },
-    approveBtn: { backgroundColor: "#4caf50", color: "white", border: "none", borderRadius: "4px", padding: "4px 12px", cursor: "pointer" },
-    rejectBtn: { backgroundColor: "#f44336", color: "white", border: "none", borderRadius: "4px", padding: "4px 12px", cursor: "pointer" },
-  };
-
-  if (loading) return <div style={styles.container}><div style={styles.header}>Loading...</div></div>;
+  const typeIcon = (t) => t === 'manhole' ? '🕳️' : '📏';
 
   return (
-    <div style={styles.container}>
-      <div style={styles.header}>
-        <span>📋 Pending Asset Edits</span>
-        <button style={styles.closeBtn} onClick={onClose}>✕</button>
+    <div className="wd-panel" style={{ '--panel-icon-bg': 'rgba(245,158,11,0.1)', '--panel-icon-border': 'rgba(245,158,11,0.3)' }}>
+
+      {/* ── Header ── */}
+      <div className="wd-panel-header">
+        <div className="wd-panel-icon">📋</div>
+        <div>
+          <div className="wd-panel-title">Pending Asset Edits</div>
+          <div className="wd-panel-sub">
+            {loading ? 'Loading…' : `${stats.total} pending · ${stats.manholes} manholes · ${stats.pipelines} pipelines`}
+          </div>
+        </div>
+        <button className="wd-panel-close" onClick={onClose}>×</button>
       </div>
-      <div style={styles.content}>
-        {edits.length === 0 ? (
-          <p>No pending edits.</p>
-        ) : (
-          edits.map(edit => (
-            <div key={edit.id} style={styles.editItem}>
-              <div style={styles.meta}>
-                <strong>{edit.feature_type.toUpperCase()}</strong> ID: {edit.feature_id}
-                <br />Submitted: {new Date(edit.created_at).toLocaleString()}
-              </div>
-              <div style={styles.data}>
-                <strong>Proposed changes:</strong>
-                <pre>{JSON.stringify(edit.proposed_data, null, 2)}</pre>
-              </div>
-              <div style={styles.buttons}>
-                <button style={styles.approveBtn} onClick={() => approveEdit(edit)} disabled={processing === edit.id}>Approve</button>
-                <button style={styles.rejectBtn} onClick={() => rejectEdit(edit)} disabled={processing === edit.id}>Reject</button>
-              </div>
+
+      {/* ── Stats bar ── */}
+      {!loading && (
+        <div style={{
+          padding: '10px 16px',
+          borderBottom: '1px solid var(--border)',
+          background: 'rgba(10,31,10,0.4)',
+          display: 'flex',
+          gap: 8,
+        }}>
+          {[
+            { lbl: 'Total',     val: stats.total,     cls: stats.total > 0 ? 'amber' : 'green' },
+            { lbl: 'Manholes',  val: stats.manholes,  cls: 'green' },
+            { lbl: 'Pipelines', val: stats.pipelines, cls: 'sky'   },
+          ].map(s => (
+            <div key={s.lbl} className={`wd-stat ${s.cls}`} style={{ flex: 1 }}>
+              <div className="s-num">{s.val}</div>
+              <div className="s-lbl">{s.lbl}</div>
             </div>
-          ))
+          ))}
+        </div>
+      )}
+
+      {/* ── Body ── */}
+      <div className="wd-panel-body">
+
+        {loading ? (
+          <div style={{
+            textAlign: 'center', padding: 32,
+            fontFamily: 'var(--font-mono)', fontSize: 12,
+            color: 'var(--text-sec)',
+          }}>
+            ⟳ Loading pending edits…
+          </div>
+
+        ) : edits.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: 32 }}>
+            <div style={{ fontSize: 36, marginBottom: 10 }}>✅</div>
+            <div style={{
+              fontFamily: 'var(--font-display)', fontSize: 14,
+              fontWeight: 700, textTransform: 'uppercase',
+              letterSpacing: '0.06em', color: 'var(--accent-primary)',
+            }}>
+              All clear
+            </div>
+            <div style={{
+              fontFamily: 'var(--font-mono)', fontSize: 11,
+              color: 'var(--text-dim)', marginTop: 4,
+            }}>
+              No pending asset edits at this time
+            </div>
+          </div>
+
+        ) : (
+          edits.map(edit => {
+            const isOpen = expanded === edit.id;
+            const busy   = processing === edit.id;
+
+            return (
+              <div key={edit.id} className="wd-edit-item">
+
+                {/* Type + chip */}
+                <div className="ei-top">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+                    <span style={{ fontSize: 18 }}>{typeIcon(edit.feature_type)}</span>
+                    <div>
+                      <div className="ei-type">
+                        {edit.feature_type === 'manhole' ? 'Manhole' : 'Pipeline'} Edit
+                      </div>
+                      <div className="ei-id">Feature ID: {edit.feature_id}</div>
+                    </div>
+                  </div>
+                  <span className={`wd-edit-type-chip ${edit.feature_type}`}>
+                    {edit.feature_type}
+                  </span>
+                </div>
+
+                {/* Timestamp */}
+                <div className="ei-time">
+                  🕐 Submitted {new Date(edit.created_at).toLocaleString()}
+                  {edit.submitted_by && ` · by ${edit.submitted_by.slice(0, 8)}…`}
+                </div>
+
+                {/* Expandable data preview */}
+                <button
+                  onClick={() => setExpanded(isOpen ? null : edit.id)}
+                  style={{
+                    background: 'none', border: 'none',
+                    fontFamily: 'var(--font-mono)', fontSize: 10,
+                    color: 'var(--text-sec)', cursor: 'pointer',
+                    padding: '3px 0', marginBottom: isOpen ? 8 : 10,
+                    display: 'flex', alignItems: 'center', gap: 4,
+                  }}
+                >
+                  {isOpen ? '▲ Hide proposed changes' : '▼ View proposed changes'}
+                </button>
+
+                {isOpen && (
+                  <div className="ei-data">
+                    {JSON.stringify(edit.proposed_data, null, 2)}
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div className="wd-edit-actions">
+                  <button
+                    className="wd-btn wd-btn-primary"
+                    onClick={() => approveEdit(edit)}
+                    disabled={busy}
+                  >
+                    {busy ? '⏳' : '✓ Approve'}
+                  </button>
+                  <button
+                    className="wd-btn wd-btn-danger"
+                    onClick={() => rejectEdit(edit)}
+                    disabled={busy}
+                  >
+                    {busy ? '⏳' : '✗ Reject'}
+                  </button>
+                </div>
+              </div>
+            );
+          })
         )}
       </div>
     </div>
