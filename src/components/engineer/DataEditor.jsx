@@ -1,5 +1,6 @@
+// src/components/engineer/DataEditor.jsx
 import React, { useState } from 'react';
-import { supabase } from '../../supabaseClient';
+import api from "../../api/api"; // adjust path
 
 export default function DataEditor({ feature, onSave, onCancel }) {
   const [formData, setFormData] = useState(feature || {});
@@ -11,13 +12,12 @@ export default function DataEditor({ feature, onSave, onCancel }) {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const table = isManhole ? 'waste_water_manhole' : 'waste_water_pipeline';
-      const { error } = await supabase.from(table).update(formData).eq('gid', feature.gid);
-      if (error) throw error;
+      const endpoint = isManhole ? `/manholes/${feature.gid}` : `/pipelines/${feature.gid}`;
+      await api.put(endpoint, formData);
       setSaved(true);
       setTimeout(onSave, 700);
     } catch (err) {
-      alert('Save error: ' + err.message);
+      alert('Save error: ' + (err.response?.data?.error || err.message));
     } finally {
       setSaving(false);
     }
@@ -33,7 +33,7 @@ export default function DataEditor({ feature, onSave, onCancel }) {
         <div className="wd-panel-icon">✏️</div>
         <div>
           <div className="wd-panel-title">Edit {isManhole ? 'Manhole' : 'Pipeline'}</div>
-          <div className="wd-panel-sub">GID: {feature?.gid ?? '—'} · Supabase record</div>
+          <div className="wd-panel-sub">GID: {feature?.gid ?? '—'} · API record</div>
         </div>
         <button className="wd-panel-close" onClick={onCancel}>×</button>
       </div>
@@ -62,7 +62,7 @@ export default function DataEditor({ feature, onSave, onCancel }) {
               {isManhole ? 'Manhole' : 'Pipeline'} Record
             </div>
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-sec)', marginTop: 2 }}>
-              Editing all attributes — saved directly to Supabase
+              Editing all attributes — saved directly to database
             </div>
           </div>
         </div>
