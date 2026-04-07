@@ -176,7 +176,7 @@ export default function RequestAccess({ selectedRole, onBack }) {
   return (
     <div style={styles.wrapper}>
       <img 
-        src={backgroundLogo} 
+        src="/src/assets/logo.png" 
         alt="" 
         style={styles.backgroundLogo}
       />

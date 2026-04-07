@@ -30,7 +30,7 @@ export default function RoleSelection({ onSelectRole }) {
     <div style={styles.container}>
       {/* Background logo */}
       <img 
-        src="/src/assets/Untitled design_20260319_161147_0000.png" 
+        src="/src/assets/logo.png" 
         alt="" 
         style={styles.backgroundLogo}
       />
@@ -75,7 +75,7 @@ const styles = {
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#f0fff0",
+    backgroundColor: "#4ff24f",
     overflow: "hidden",
     margin: 0,
     padding: 0,
@@ -86,7 +86,7 @@ const styles = {
     left: 0,
     width: "100%",
     height: "100%",
-    opacity: 0.05,
+    opacity: 0.20,
     pointerEvents: "none",
     zIndex: 1,
     objectFit: "cover",
