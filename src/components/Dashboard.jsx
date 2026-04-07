@@ -3,7 +3,7 @@ import React, { useState, useEffect } from "react";
 import MapView from "./MapView";
 import ManholeList from "./ManholeList";
 import PipeList from "./PipelineList";
-import api from "../api";
+import api from "./api";
 import "../style/Dashboard.css";
 
 export default function Dashboard({ role, userId }) {
