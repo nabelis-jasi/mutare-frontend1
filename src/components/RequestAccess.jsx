@@ -1,6 +1,6 @@
+// src/components/RequestAccess.jsx
 import React, { useState } from "react";
-import { supabase } from "../supabaseClient";
-import backgroundLogo from "../assets/logo.png"; // adjust path if needed
+import api from "../api"; // our axios client
 
 export default function RequestAccess({ selectedRole, onBack }) {
   const [email, setEmail] = useState("");
@@ -19,29 +19,22 @@ export default function RequestAccess({ selectedRole, onBack }) {
     setStatus("");
 
     try {
-      const { data, error } = await supabase
-        .from("access_requests")
-        .insert([{ 
-          email, 
-          role_requested: selectedRole || 'pending',
-          status: "Waiting",
-          created_at: new Date().toISOString()
-        }]);
-
-      if (error) {
-        if (error.code === '42P01') {
-          setStatus(
-            "⚠️ Access request system is being set up. Please contact admin directly."
-          );
-        } else {
-          throw error;
-        }
-      } else {
-        setStatus("✅ Request sent! You'll be notified when approved.");
-        setEmail("");
-      }
+      // Call backend endpoint to create access request
+      await api.post("/access-requests", {
+        email: email.trim(),
+        role_requested: selectedRole || 'pending',
+      });
+      setStatus("✅ Request sent! You'll be notified when approved.");
+      setEmail("");
     } catch (error) {
-      setStatus(`Error: ${error.message}`);
+      const errMsg = error.response?.data?.error || error.message;
+      if (error.response?.status === 404) {
+        setStatus(
+          "⚠️ Access request system is being set up. Please contact admin directly."
+        );
+      } else {
+        setStatus(`Error: ${errMsg}`);
+      }
     } finally {
       setLoading(false);
     }
@@ -73,17 +66,6 @@ export default function RequestAccess({ selectedRole, onBack }) {
       overflow: "hidden",
       margin: 0,
       padding: 0,
-    },
-    backgroundLogo: {
-      position: "absolute",
-      top: 0,
-      left: 0,
-      width: "100%",
-      height: "100%",
-      opacity: 0.40,
-      pointerEvents: "none",
-      zIndex: 1,
-      objectFit: "cover",
     },
     container: {
       position: "relative",
@@ -175,12 +157,7 @@ export default function RequestAccess({ selectedRole, onBack }) {
 
   return (
     <div style={styles.wrapper}>
-      <img 
-        src="/src/assets/logo.png" 
-        alt="" 
-        style={styles.backgroundLogo}
-      />
-      
+      {/* No background logo */}
       <div style={styles.container}>
         <h2 style={styles.title}>Request Access</h2>
         
