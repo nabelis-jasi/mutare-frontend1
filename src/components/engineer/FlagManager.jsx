@@ -1,5 +1,6 @@
+// src/components/engineer/FlagManager.jsx
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../../supabaseClient';
+import api from "../../api/api"; // adjust path to your api.js
 
 export default function FlagManager({ onFlagManaged, onClose }) {
   const [flags,    setFlags]   = useState([]);
@@ -16,21 +17,21 @@ export default function FlagManager({ onFlagManaged, onClose }) {
   const fetchFlags = async () => {
     setLoading(true);
     try {
-      let m = [], p = [];
+      let manholes = [], pipelines = [];
       if (filter !== 'pipelines') {
-        const { data, error } = await supabase.from('waste_water_manhole').select('*').eq('flagged', true);
-        if (!error) m = data.map(r => ({ ...r, feature_type: 'manhole' }));
+        const res = await api.get('/manholes?flagged=true');
+        manholes = (res.data || []).map(m => ({ ...m, feature_type: 'manhole' }));
       }
       if (filter !== 'manholes') {
-        const { data, error } = await supabase.from('waste_water_pipeline').select('*').eq('flagged', true);
-        if (!error) p = data.map(r => ({ ...r, feature_type: 'pipeline' }));
+        const res = await api.get('/pipelines?flagged=true');
+        pipelines = (res.data || []).map(p => ({ ...p, feature_type: 'pipeline' }));
       }
-      const all = [...m, ...p];
+      const all = [...manholes, ...pipelines];
       setFlags(all);
       const resolved = all.filter(f => f.flag_resolved).length;
       setStats({ total: all.length, resolved, pending: all.length - resolved });
     } catch (err) {
-      console.error(err);
+      console.error('Error fetching flags:', err);
     } finally {
       setLoading(false);
     }
@@ -40,30 +41,39 @@ export default function FlagManager({ onFlagManaged, onClose }) {
     if (!selected) return;
     setWorking(true);
     try {
-      const table = selected.feature_type === 'manhole' ? 'waste_water_manhole' : 'waste_water_pipeline';
-      const { error } = await supabase.from(table).update({
-        flagged: false, flag_resolved: true,
+      const endpoint = selected.feature_type === 'manhole' ? `/manholes/${selected.id}` : `/pipelines/${selected.id}`;
+      await api.put(endpoint, {
+        flagged: false,
+        flag_resolved: true,
         flag_resolved_at: new Date().toISOString(),
         flag_resolution_note: note,
-        flag_resolved_by: localStorage.getItem('user_id'),
-      }).eq('gid', selected.gid);
-      if (error) throw error;
-      setSelected(null); setNote('');
-      fetchFlags(); onFlagManaged?.();
-    } catch (err) { alert('Error: ' + err.message); }
-    finally { setWorking(false); }
+        flag_resolved_by: localStorage.getItem('user_id')
+      });
+      setSelected(null);
+      setNote('');
+      await fetchFlags();
+      if (onFlagManaged) onFlagManaged();
+    } catch (err) {
+      alert('Error: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setWorking(false);
+    }
   };
 
   const deleteFlag = async () => {
     if (!selected || !confirm(`Permanently delete this ${selected.feature_type}?`)) return;
     setWorking(true);
     try {
-      const table = selected.feature_type === 'manhole' ? 'waste_water_manhole' : 'waste_water_pipeline';
-      const { error } = await supabase.from(table).delete().eq('gid', selected.gid);
-      if (error) throw error;
-      setSelected(null); fetchFlags(); onFlagManaged?.();
-    } catch (err) { alert('Error: ' + err.message); }
-    finally { setWorking(false); }
+      const endpoint = selected.feature_type === 'manhole' ? `/manholes/${selected.id}` : `/pipelines/${selected.id}`;
+      await api.delete(endpoint);
+      setSelected(null);
+      await fetchFlags();
+      if (onFlagManaged) onFlagManaged();
+    } catch (err) {
+      alert('Error: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setWorking(false);
+    }
   };
 
   const sevBadge = (f) => {
@@ -120,15 +130,15 @@ export default function FlagManager({ onFlagManaged, onClose }) {
             const { cls, lbl } = sevBadge(f);
             return (
               <div
-                key={`${f.feature_type}-${f.gid}`}
-                className={`wd-flag-card${selected?.gid === f.gid ? ' selected' : ''}${f.flag_resolved ? ' resolved' : ''}`}
+                key={`${f.feature_type}-${f.id}`}
+                className={`wd-flag-card${selected?.id === f.id ? ' selected' : ''}${f.flag_resolved ? ' resolved' : ''}`}
                 onClick={() => setSelected(f)}
               >
                 <div className="fc-top">
                   <span className="fc-type">{f.feature_type === 'manhole' ? '🕳️ Manhole' : '📏 Pipeline'}</span>
                   <span className={cls}>{lbl}</span>
                 </div>
-                <div className="fc-id">ID: {f.manhole_id || f.pipe_id || f.gid}</div>
+                <div className="fc-id">ID: {f.manhole_id || f.pipe_id || f.id}</div>
                 <div className="fc-reason">🚩 {f.flag_reason || 'No reason provided'}</div>
                 <div className="fc-date">
                   {f.flagged_at ? new Date(f.flagged_at).toLocaleString() : 'Unknown date'}
@@ -144,7 +154,7 @@ export default function FlagManager({ onFlagManaged, onClose }) {
       {selected && !selected.flag_resolved && (
         <div className="wd-panel-footer">
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-dim)', marginBottom: 10 }}>
-            Actions — {selected.feature_type} · {selected.manhole_id || selected.pipe_id || selected.gid}
+            Actions — {selected.feature_type} · {selected.manhole_id || selected.pipe_id || selected.id}
           </div>
 
           <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
