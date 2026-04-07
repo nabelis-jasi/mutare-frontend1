@@ -1,6 +1,6 @@
+// src/components/engineer/ShapefileUploader.jsx
 import React, { useState, useRef } from 'react';
-import { supabase } from '../../supabaseClient';
-import shp from 'shpjs';
+import api from "../../api/api";
 
 export default function ShapefileUploader({ onUploadComplete, onClose }) {
   const [file,      setFile]     = useState(null);
@@ -12,53 +12,47 @@ export default function ShapefileUploader({ onUploadComplete, onClose }) {
   const inputRef = useRef();
 
   const pick = (f) => {
-    if (f && f.name.endsWith('.zip')) { setFile(f); setStatus(''); setStats(null); }
-    else { setFile(null); setStatus('Select a .zip file containing .shp, .dbf and .prj'); setStatusCls('err'); }
+    if (f && (f.name.endsWith('.zip') || f.name.endsWith('.shp'))) {
+      setFile(f);
+      setStatus('');
+      setStats(null);
+    } else {
+      setFile(null);
+      setStatus('Select a .zip or .shp file');
+      setStatusCls('err');
+    }
   };
 
   const handleUpload = async () => {
     if (!file) return;
-    setUploading(true); setProgress(5); setStatus('Reading archive…'); setStatusCls('info');
+    setUploading(true);
+    setProgress(5);
+    setStatus('Uploading file…');
+    setStatusCls('info');
+
+    const formData = new FormData();
+    formData.append('file', file);
+    // Optionally add project_id and layer_type if your UI provides them
+    // formData.append('project_id', selectedProjectId);
+    // formData.append('layer_type', 'manhole'); // backend detects from geometry anyway
+
     try {
-      const buf    = await file.arrayBuffer();
-      setProgress(20);
-      const geojson = await shp(buf);
-      const features = geojson.features;
-      setProgress(30); setStatus(`Processing ${features.length} features…`);
-
-      let mh = 0, pl = 0, err = 0;
-      for (let i = 0; i < features.length; i++) {
-        const f = features[i];
-        setProgress(30 + Math.round((i / features.length) * 60));
-
-        if (f.geometry.type === 'Point') {
-          const { error } = await supabase.from('waste_water_manhole').insert([{
-            geom:       f.geometry,
-            status:     f.properties.status    || 'Good',
-            manhole_id: f.properties.id        || `MH_${Date.now()}_${mh}`,
-            created_at: new Date().toISOString(),
-          }]);
-          error ? err++ : mh++;
-        } else if (f.geometry.type === 'LineString') {
-          const { error } = await supabase.from('waste_water_pipeline').insert([{
-            geom:       f.geometry,
-            status:     f.properties.status   || 'Good',
-            pipe_id:    f.properties.id       || `PL_${Date.now()}_${pl}`,
-            pipe_mat:   f.properties.material || 'Unknown',
-            length:     f.properties.length   || 0,
-            created_at: new Date().toISOString(),
-          }]);
-          error ? err++ : pl++;
-        }
-      }
-
+      const response = await api.post('/upload/shapefile', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        onUploadProgress: (progressEvent) => {
+          const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          setProgress(percent);
+        },
+      });
+      const { features, message } = response.data;
       setProgress(100);
-      setStats({ manholes: mh, pipelines: pl, errors: err });
-      setStatus(`Import complete — ${mh + pl} features added.`);
+      setStats({ manholes: features || 0, pipelines: 0, errors: 0 }); // backend returns total features count
+      setStatus(message || 'Import successful!');
       setStatusCls('ok');
-      onUploadComplete();
-    } catch (e) {
-      setStatus(`Failed: ${e.message}`);
+      if (onUploadComplete) onUploadComplete();
+    } catch (err) {
+      const errMsg = err.response?.data?.error || err.message;
+      setStatus(`Import failed: ${errMsg}`);
       setStatusCls('err');
     } finally {
       setUploading(false);
@@ -87,7 +81,7 @@ export default function ShapefileUploader({ onUploadComplete, onClose }) {
           <div className="dz-icon">{file ? '✅' : '📁'}</div>
           <div className="dz-text">{file ? file.name : 'Drop .zip shapefile here'}</div>
           <div className="dz-sub">{file ? `${(file.size/1024).toFixed(1)} KB — click to change` : 'or click to browse'}</div>
-          <input ref={inputRef} type="file" accept=".zip" style={{ display:'none' }} onChange={e => pick(e.target.files[0])} disabled={uploading} />
+          <input ref={inputRef} type="file" accept=".zip,.shp" style={{ display:'none' }} onChange={e => pick(e.target.files[0])} disabled={uploading} />
         </div>
 
         {/* Format guide */}
