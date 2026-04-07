@@ -1,5 +1,6 @@
+// src/App.jsx
 import React, { useState, useEffect } from "react";
-import { supabase } from "./supabaseClient";
+import api from "./api";
 import LandingPortal from "./components/LandingPortal";
 import Splash from "./components/Splash";
 import Signup from "./components/Signup";
@@ -36,62 +37,39 @@ export default function App() {
 
   const fetchData = async () => {
     try {
-      const { data: manholesData } = await supabase
-        .from("waste_water_manhole")
-        .select("*");
-
-      const { data: pipesData } = await supabase
-        .from("waste_water_pipeline")
-        .select("*");
-
-      setManholes(manholesData || []);
-      setPipes(pipesData || []);
+      const [manholesRes, pipesRes] = await Promise.all([
+        api.get("/manholes"),
+        api.get("/pipelines")
+      ]);
+      setManholes(manholesRes.data || []);
+      setPipes(pipesRes.data || []);
     } catch (err) {
       console.error("Error fetching data:", err);
     }
   };
 
-  const handleLogin = async (email, password) => {
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) throw error;
-
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", data.user.id)
-        .single();
-
-      if (profileError) throw profileError;
-
-      if (!profile.is_active) {
-        alert("Your account is pending admin approval.");
-        return;
-      }
-
-      if (profile.role !== selectedRole) {
-        alert(`This account is registered as ${profile.role}. Select the correct role.`);
-        return;
-      }
-
-      localStorage.setItem("access_token", data.session.access_token);
-      localStorage.setItem("role", profile.role);
-      localStorage.setItem("user_id", data.user.id);
-
-      setRole(profile.role);
-      setUserId(data.user.id);
-      setIsAuthenticated(true);
-      setSelectedRole(null);
-      setActivePortal(null);
-
-      await fetchData();
-    } catch (error) {
-      alert(error.message);
+  const handleLogin = async (user) => {
+    // Called from Login component after successful authentication
+    // user object contains { id, email, role, is_active, name }
+    if (!user.is_active) {
+      alert("Your account is pending admin approval.");
+      return;
     }
+    if (user.role !== selectedRole) {
+      alert(`This account is registered as ${user.role}. Select the correct role.`);
+      return;
+    }
+    setRole(user.role);
+    setUserId(user.id);
+    setIsAuthenticated(true);
+    setSelectedRole(null);
+    setActivePortal(null);
+    await fetchData();
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
     setIsAuthenticated(false);
     setRole(null);
     setUserId(null);
@@ -100,36 +78,37 @@ export default function App() {
     setActivePortal(null);
     setManholes([]);
     setPipes([]);
-    localStorage.clear();
   };
 
+  // Check for existing session on mount
   useEffect(() => {
     const checkSession = async () => {
       setLoading(true);
-      const { data } = await supabase.auth.getSession();
-
-      if (data.session) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", data.session.user.id)
-          .single();
-
-        if (profile && profile.is_active) {
+      const token = localStorage.getItem("token");
+      const storedUser = localStorage.getItem("user");
+      if (token && storedUser) {
+        try {
+          const user = JSON.parse(storedUser);
+          // Verify token is still valid by calling /me
+          await api.get("/me");
+          // If successful, set session
+          setRole(user.role);
+          setUserId(user.id);
           setIsAuthenticated(true);
-          setRole(profile.role);
-          setUserId(data.session.user.id);
           setShowSplash(false);
-
           await fetchData();
+        } catch (err) {
+          // Token invalid, clear storage
+          localStorage.removeItem("token");
+          localStorage.removeItem("user");
         }
       }
       setLoading(false);
     };
-
     checkSession();
   }, []);
 
+  // Global styles for full‑screen layout
   useEffect(() => {
     const style = document.createElement("style");
     style.textContent = `
@@ -140,13 +119,11 @@ export default function App() {
         height: 100%;
         overflow: hidden;
       }
-
       * {
         box-sizing: border-box;
       }
     `;
     document.head.appendChild(style);
-
     return () => document.head.removeChild(style);
   }, []);
 
@@ -187,6 +164,7 @@ export default function App() {
               userId={userId}
               role={role}
               onDataRefresh={handleDataRefresh}
+              onLogout={handleLogout}
             />
           )}
 
@@ -197,6 +175,7 @@ export default function App() {
               userId={userId}
               role={role}
               onDataRefresh={handleDataRefresh}
+              onLogout={handleLogout}
             />
           )}
 
@@ -207,6 +186,7 @@ export default function App() {
               userId={userId}
               role={role}
               onDataRefresh={handleDataRefresh}
+              onLogout={handleLogout}
             />
           )}
 
