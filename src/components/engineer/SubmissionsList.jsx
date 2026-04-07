@@ -1,5 +1,6 @@
+// src/components/engineer/SubmissionsList.jsx
 import React, { useEffect, useState } from 'react';
-import { supabase } from '../../supabaseClient';
+import api from "../../api/api"; // adjust path
 
 const STATUS_ORDER = ['pending', 'approved', 'cleaned', 'rejected'];
 
@@ -16,33 +17,40 @@ export default function SubmissionsList({ onClose, onRefresh }) {
   useEffect(() => { fetchSubmissions(); }, [selectedFormId, filterStatus]);
 
   const fetchForms = async () => {
-    const { data } = await supabase.from('forms').select('id, title').order('created_at', { ascending: false });
-    setForms(data || []);
+    try {
+      const res = await api.get('/forms');
+      setForms(res.data || []);
+    } catch (err) {
+      console.error('Error fetching forms', err);
+    }
   };
 
   const fetchSubmissions = async () => {
     setLoading(true);
-    let q = supabase
-      .from('form_submissions')
-      .select('id, form_id, collector_id, data, location, submitted_at, status, cleaned_data, engineer_notes')
-      .order('submitted_at', { ascending: false });
-    if (selectedFormId)            q = q.eq('form_id', selectedFormId);
-    if (filterStatus !== 'all')    q = q.eq('status', filterStatus);
-
-    const { data, error } = await q;
-    if (!error) setSubmissions(data || []);
-    setLoading(false);
+    try {
+      const params = {};
+      if (selectedFormId) params.form_id = selectedFormId;
+      if (filterStatus !== 'all') params.status = filterStatus;
+      const res = await api.get('/submissions', { params });
+      setSubmissions(res.data || []);
+    } catch (err) {
+      console.error('Error fetching submissions', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const updateStatus = async (id, newStatus) => {
     setUpdating(id);
-    const { error } = await supabase
-      .from('form_submissions')
-      .update({ status: newStatus })
-      .eq('id', id);
-    if (!error) { onRefresh?.(); fetchSubmissions(); }
-    else alert('Error: ' + error.message);
-    setUpdating(null);
+    try {
+      await api.put(`/submissions/${id}`, { status: newStatus });
+      onRefresh?.();
+      await fetchSubmissions();
+    } catch (err) {
+      alert('Error: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setUpdating(null);
+    }
   };
 
   const formTitle = (fid) => forms.find(f => f.id === fid)?.title || 'Unknown form';
@@ -121,19 +129,16 @@ export default function SubmissionsList({ onClose, onRefresh }) {
                 key={sub.id}
                 className={`wd-sub-item${sub.status !== 'pending' ? ` ${sub.status}` : ''}`}
               >
-                {/* Header row */}
                 <div className="si-top">
                   <div className="si-form-name">{formTitle(sub.form_id)}</div>
                   <span className={`wd-sub-badge ${sub.status}`}>{sub.status}</span>
                 </div>
 
-                {/* Meta */}
                 <div className="si-meta">
                   <span className="si-meta-item">🕐 {new Date(sub.submitted_at).toLocaleString()}</span>
                   <span className="si-meta-item">👤 {sub.collector_id?.slice(0,8)}…</span>
                 </div>
 
-                {/* Expand toggle */}
                 <button
                   onClick={() => setExpanded(isOpen ? null : sub.id)}
                   style={{
@@ -147,7 +152,6 @@ export default function SubmissionsList({ onClose, onRefresh }) {
                   {isOpen ? '▲ Hide data' : '▼ Show data'}
                 </button>
 
-                {/* Expanded data */}
                 {isOpen && (
                   <>
                     <div className="si-data-preview">
@@ -166,7 +170,6 @@ export default function SubmissionsList({ onClose, onRefresh }) {
                   </>
                 )}
 
-                {/* Actions */}
                 {sub.status === 'pending' && (
                   <div className="wd-sub-actions">
                     <button
