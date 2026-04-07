@@ -1,5 +1,6 @@
+// src/components/fieldOperator/StatusUpdater.jsx
 import React, { useState } from 'react';
-import { supabase } from '../../supabaseClient';
+import api from "../../api/api";
 
 export default function StatusUpdater({ onUpdateComplete }) {
   const [featureType, setFeatureType] = useState('manhole');
@@ -22,15 +23,13 @@ export default function StatusUpdater({ onUpdateComplete }) {
     setLoading(true);
     
     try {
-      const table = featureType === 'manhole' ? 'waste_water_manhole' : 'waste_water_pipeline';
+      const endpoint = featureType === 'manhole' ? `/manholes/${featureId}` : `/pipelines/${featureId}`;
       const statusField = featureType === 'manhole' ? 'bloc_stat' : 'block_stat';
       
-      const { error } = await supabase
-        .from(table)
-        .update({ [statusField]: status, updated_at: new Date().toISOString() })
-        .eq('gid', featureId);
-
-      if (error) throw error;
+      await api.put(endpoint, {
+        [statusField]: status,
+        updated_at: new Date().toISOString()
+      });
       
       setMessage(`✅ ${featureType} status updated to "${status}"`);
       setFeatureId('');
@@ -38,7 +37,7 @@ export default function StatusUpdater({ onUpdateComplete }) {
       onUpdateComplete();
       
     } catch (error) {
-      setMessage(`❌ Error: ${error.message}`);
+      setMessage(`❌ Error: ${error.response?.data?.error || error.message}`);
     } finally {
       setLoading(false);
     }
