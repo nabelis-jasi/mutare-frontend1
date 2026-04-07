@@ -1,8 +1,9 @@
+// src/components/Dashboard.jsx
 import React, { useState, useEffect } from "react";
 import MapView from "./MapView";
 import ManholeList from "./ManholeList";
 import PipeList from "./PipelineList";
-import { supabase } from "../supabaseClient";
+import api from "../api";
 import "../style/Dashboard.css";
 
 export default function Dashboard({ role, userId }) {
@@ -11,49 +12,30 @@ export default function Dashboard({ role, userId }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Fetch data based on role
+  // Fetch data from backend
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
       setError(null);
       
       try {
-        // Fetch manholes from waste_water_manhole table
-        const { data: manholesData, error: manholesError } = await supabase
-          .from("waste_water_manhole")
-          .select("*");
+        // Fetch manholes
+        const manholesRes = await api.get("/manholes");
+        setManholes(manholesRes.data || []);
         
-        if (manholesError) {
-          console.error("Error fetching manholes:", manholesError);
-          setError(`Manholes error: ${manholesError.message}`);
-        } else {
-          setManholes(manholesData || []);
-        }
-
-        // Fetch pipes from waste_water_pipeline table
-        const { data: pipesData, error: pipesError } = await supabase
-          .from("waste_water_pipeline")
-          .select("*");
-        
-        if (pipesError) {
-          console.error("Error fetching pipes:", pipesError);
-          setError(`Pipes error: ${pipesError.message}`);
-        } else {
-          setPipes(pipesData || []);
-        }
-        
+        // Fetch pipelines
+        const pipesRes = await api.get("/pipelines");
+        setPipes(pipesRes.data || []);
       } catch (err) {
         console.error("Error fetching data:", err);
-        setError(err.message);
+        setError(err.response?.data?.error || err.message);
       } finally {
         setLoading(false);
       }
     };
 
-    if (userId) {
-      fetchData();
-    }
-  }, [role, userId]);
+    fetchData();
+  }, []); // No dependency on userId – token already handled by api interceptor
 
   // Role-specific messages
   const roleMessages = {
@@ -64,7 +46,7 @@ export default function Dashboard({ role, userId }) {
     "pending": "⏳ Your account is pending approval"
   };
 
-  // Role-specific actions
+  // Role-specific actions (buttons – you can later connect them to API calls)
   const renderRoleActions = () => {
     switch (role) {
       case "field-collector":
