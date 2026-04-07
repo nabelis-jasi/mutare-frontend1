@@ -1,9 +1,11 @@
+// src/components/Signup.jsx
 import React, { useState } from "react";
-import { supabase } from "../supabaseClient";
+import api from "../api"; // our axios client
 
 export default function Signup({ selectedRole, onBack }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [name, setName] = useState(""); // optional, add if needed
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -24,27 +26,22 @@ export default function Signup({ selectedRole, onBack }) {
     setMessage("");
 
     try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
+      // Call backend registration endpoint
+      await api.post("/register", {
+        email: email.trim(),
         password,
-        options: {
-          data: {
-            role: selectedRole || 'pending'
-          }
-        }
+        name: name.trim() || undefined,
+        role: selectedRole,
       });
-
-      if (error) throw error;
-
       setMessage(
-        "✅ Verification email sent! Please check your inbox and confirm your account."
+        "✅ Registration successful! Your account is pending admin approval."
       );
-
       setEmail("");
       setPassword("");
-      
+      setName("");
     } catch (error) {
-      setMessage(`Error: ${error.message}`);
+      const errMsg = error.response?.data?.error || error.message;
+      setMessage(`Error: ${errMsg}`);
     } finally {
       setLoading(false);
     }
@@ -75,17 +72,6 @@ export default function Signup({ selectedRole, onBack }) {
       overflow: "hidden",
       margin: 0,
       padding: 0,
-    },
-    backgroundLogo: {
-      position: "absolute",
-      top: 0,
-      left: 0,
-      width: "100%",
-      height: "100%",
-      opacity: 0.20,
-      pointerEvents: "none",
-      zIndex: 1,
-      objectFit: "cover",
     },
     container: {
       position: "relative",
@@ -183,12 +169,7 @@ export default function Signup({ selectedRole, onBack }) {
 
   return (
     <div style={styles.wrapper}>
-      <img 
-        src="/src/assets/logo.png" 
-        alt="" 
-        style={styles.backgroundLogo}
-      />
-      
+      {/* Logo removed – background is solid */}
       <div style={styles.container}>
         <h2 style={styles.title}>Create Account</h2>
         
