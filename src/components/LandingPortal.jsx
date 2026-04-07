@@ -1,9 +1,10 @@
+// src/components/LandingPortal.jsx
 import React, { useState } from "react";
 import Login from "./Login";
 import Signup from "./Signup";
 import RequestAccess from "./RequestAccess";
 
-// Define styles
+// Define styles – removed backgroundLogo
 const styles = {
   landingWrapper: {
     display: "flex",
@@ -18,17 +19,6 @@ const styles = {
     overflow: "hidden",
     margin: 0,
     padding: 0,
-  },
-  backgroundLogo: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    width: "100%",
-    height: "100%",
-    opacity: 0.20,
-    pointerEvents: "none",
-    zIndex: 1,
-    objectFit: "cover",
   },
   contentContainer: {
     position: "relative",
@@ -188,14 +178,7 @@ export default function LandingPortal({ selectedRole, setActivePortal, onBackToR
 
   return (
     <div style={styles.landingWrapper}>
-      {/* Full screen faint background logo */}
-      <img 
-        src="/src/assets/logo.png" 
-        alt="" 
-        style={styles.backgroundLogo}
-      />
-      
-      {/* Content overlay */}
+      {/* Background logo removed */}
       <div style={styles.contentContainer}>
         <h2 style={styles.welcomeTitle}>Welcome</h2>
         
