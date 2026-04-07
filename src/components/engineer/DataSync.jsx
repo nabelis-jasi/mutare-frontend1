@@ -1,5 +1,6 @@
+// src/components/engineer/DataSync.jsx
 import React, { useState } from 'react';
-import { supabase } from '../../supabaseClient';
+import api from "../../api/api";
 
 export default function DataSync({ userId, onSyncComplete, onClose }) {
   const [syncing,  setSyncing]  = useState(false);
@@ -11,12 +12,31 @@ export default function DataSync({ userId, onSyncComplete, onClose }) {
     try { return JSON.parse(localStorage.getItem('sync_history') || '[]'); } catch { return []; }
   });
 
+  // Helper: upsert a single feature (POST if new, PUT if exists)
+  const upsertFeature = async (table, item) => {
+    const id = item.id || item.gid;
+    if (!id) {
+      // No id, must be new – POST
+      if (table === 'manhole') {
+        return api.post('/manholes', item);
+      } else {
+        return api.post('/pipelines', item);
+      }
+    } else {
+      // Update existing
+      if (table === 'manhole') {
+        return api.put(`/manholes/${id}`, item);
+      } else {
+        return api.put(`/pipelines/${id}`, item);
+      }
+    }
+  };
+
   const syncManholes = async () => {
     setStatus('Uploading manhole changes…'); setProgress(25);
     const pending = JSON.parse(localStorage.getItem('pending_manholes') || '[]');
     for (let i = 0; i < pending.length; i++) {
-      const { error } = await supabase.from('waste_water_manhole').upsert([pending[i]], { onConflict: 'gid' });
-      if (error) throw new Error(error.message);
+      await upsertFeature('manhole', pending[i]);
       setProgress(25 + Math.round((i / pending.length) * 20));
     }
     localStorage.setItem('pending_manholes', '[]');
@@ -27,8 +47,7 @@ export default function DataSync({ userId, onSyncComplete, onClose }) {
     setStatus('Uploading pipeline changes…'); setProgress(50);
     const pending = JSON.parse(localStorage.getItem('pending_pipelines') || '[]');
     for (let i = 0; i < pending.length; i++) {
-      const { error } = await supabase.from('waste_water_pipeline').upsert([pending[i]], { onConflict: 'gid' });
-      if (error) throw new Error(error.message);
+      await upsertFeature('pipeline', pending[i]);
       setProgress(50 + Math.round((i / pending.length) * 20));
     }
     localStorage.setItem('pending_pipelines', '[]');
@@ -37,15 +56,13 @@ export default function DataSync({ userId, onSyncComplete, onClose }) {
 
   const pullRemote = async () => {
     setStatus('Downloading remote data…'); setProgress(75);
-    const { data: m, error: me } = await supabase.from('waste_water_manhole').select('*').order('updated_at', { ascending: false });
-    if (me) throw new Error(me.message);
-    const { data: p, error: pe } = await supabase.from('waste_water_pipeline').select('*').order('updated_at', { ascending: false });
-    if (pe) throw new Error(pe.message);
-    localStorage.setItem('offline_manholes', JSON.stringify(m));
-    localStorage.setItem('offline_pipelines', JSON.stringify(p));
+    const mRes = await api.get('/manholes');
+    const pRes = await api.get('/pipelines');
+    localStorage.setItem('offline_manholes', JSON.stringify(mRes.data));
+    localStorage.setItem('offline_pipelines', JSON.stringify(pRes.data));
     localStorage.setItem('last_sync_time', new Date().toISOString());
     setProgress(100);
-    return { m: m.length, p: p.length };
+    return { m: mRes.data.length, p: pRes.data.length };
   };
 
   const handleSync = async () => {
@@ -65,7 +82,8 @@ export default function DataSync({ userId, onSyncComplete, onClose }) {
       setSCls('ok');
       onSyncComplete?.();
     } catch (err) {
-      setStatus(`Sync failed: ${err.message}`); setSCls('err');
+      setStatus(`Sync failed: ${err.response?.data?.error || err.message}`);
+      setSCls('err');
     } finally {
       setSyncing(false);
     }
@@ -78,20 +96,19 @@ export default function DataSync({ userId, onSyncComplete, onClose }) {
       localStorage.removeItem('pending_manholes');
       localStorage.removeItem('pending_pipelines');
       setProgress(20);
-      const { data: m, error: me } = await supabase.from('waste_water_manhole').select('*');
-      if (me) throw new Error(me.message);
+      const mRes = await api.get('/manholes');
       setProgress(60);
-      const { data: p, error: pe } = await supabase.from('waste_water_pipeline').select('*');
-      if (pe) throw new Error(pe.message);
-      localStorage.setItem('offline_manholes', JSON.stringify(m));
-      localStorage.setItem('offline_pipelines', JSON.stringify(p));
+      const pRes = await api.get('/pipelines');
+      localStorage.setItem('offline_manholes', JSON.stringify(mRes.data));
+      localStorage.setItem('offline_pipelines', JSON.stringify(pRes.data));
       localStorage.setItem('last_sync_time', new Date().toISOString());
       setProgress(100);
-      setStatus(`Full resync — ${m.length} manholes, ${p.length} pipelines.`);
+      setStatus(`Full resync — ${mRes.data.length} manholes, ${pRes.data.length} pipelines.`);
       setSCls('ok');
       onSyncComplete?.();
     } catch (err) {
-      setStatus(`Resync failed: ${err.message}`); setSCls('err');
+      setStatus(`Resync failed: ${err.response?.data?.error || err.message}`);
+      setSCls('err');
     } finally {
       setSyncing(false);
     }
@@ -124,7 +141,6 @@ export default function DataSync({ userId, onSyncComplete, onClose }) {
       </div>
 
       <div className="wd-panel-body">
-        {/* Status overview */}
         <div className="wd-stats" style={{ gridTemplateColumns: '1fr 1fr' }}>
           <div className={`wd-stat ${pend > 0 ? 'amber' : 'green'}`}>
             <div className="s-num">{pend}</div>
@@ -136,13 +152,11 @@ export default function DataSync({ userId, onSyncComplete, onClose }) {
           </div>
         </div>
 
-        {/* Session info */}
         <div style={{ padding: '10px 12px', background: 'var(--bg-raised)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', marginBottom: 14 }}>
           <div className="wd-info-row"><span className="ir-k">User ID</span><span className="ir-v" style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{userId?.slice(0,14)}…</span></div>
           <div className="wd-info-row"><span className="ir-k">Connection</span><span className="ir-v" style={{ color: 'var(--accent-primary)' }}>● Online</span></div>
         </div>
 
-        {/* Sync mode */}
         <div className="wd-section">Sync Mode</div>
         <div className="wd-mode-grid">
           {modes.map(m => (
@@ -152,7 +166,6 @@ export default function DataSync({ userId, onSyncComplete, onClose }) {
           ))}
         </div>
 
-        {/* Progress */}
         {syncing && (
           <>
             <div className="wd-progress-track"><div className="wd-progress-fill" style={{ width: `${progress}%` }} /></div>
@@ -169,7 +182,6 @@ export default function DataSync({ userId, onSyncComplete, onClose }) {
           <button className="wd-btn wd-btn-amber" onClick={forceResync} disabled={syncing}>Force</button>
         </div>
 
-        {/* History */}
         {history.length > 0 && (
           <>
             <div className="wd-section" style={{ marginTop: 20 }}>Recent Syncs</div>
