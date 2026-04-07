@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { supabase } from "../supabaseClient";
+import api from "../api";  // our axios client (to be created)
 
 export default function Login({ selectedRole, onLoginSuccess, onBack }) {
   const [email, setEmail] = useState("");
@@ -22,99 +22,57 @@ export default function Login({ selectedRole, onLoginSuccess, onBack }) {
     setDebugInfo("Attempting login...");
 
     try {
-      console.log("Login attempt for email:", email);
-      
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password: password,
+      // 1. Call /token with OAuth2 form data
+      const formData = new URLSearchParams();
+      formData.append("username", email.trim());
+      formData.append("password", password);
+
+      const tokenRes = await api.post("/token", formData, {
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
       });
+      const { access_token } = tokenRes.data;
+      localStorage.setItem("token", access_token);
+      setDebugInfo("Token obtained. Fetching user profile...");
 
-      if (error) throw error;
+      // 2. Get user profile from /me
+      const userRes = await api.get("/me");
+      const user = userRes.data;
+      setDebugInfo(`Profile loaded. Role: ${user.role}, Active: ${user.is_active}`);
 
-      console.log("Login successful, user:", data.user.id);
-      setDebugInfo("Login successful! Checking profile...");
-
-      try {
-        const { data: profile, error: profileError } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", data.user.id)
-          .maybeSingle();
-
-        if (profileError) {
-          console.error("Profile fetch error:", profileError);
-          setDebugInfo(`Profile error: ${profileError.message}`);
-          
-          if (profileError.code === '42P01') {
-            setMessage("Database tables not set up. Please run the SQL setup script in Supabase.");
-            await supabase.auth.signOut();
-            return;
-          }
-          throw profileError;
-        }
-
-        if (!profile) {
-          setDebugInfo("No profile found, creating one...");
-          
-          const { error: insertError } = await supabase
-            .from("profiles")
-            .insert([{
-              id: data.user.id,
-              email: data.user.email,
-              role: 'pending',
-              is_active: false
-            }]);
-
-          if (insertError) {
-            console.error("Profile creation error:", insertError);
-            setDebugInfo(`Profile creation error: ${insertError.message}`);
-            throw insertError;
-          }
-
-          setMessage("Account created! Please wait for admin approval.");
-          await supabase.auth.signOut();
-          return;
-        }
-
-        if (!profile.is_active) {
-          setMessage("Your account is pending admin approval.");
-          await supabase.auth.signOut();
-          return;
-        }
-
-        if (profile.role !== selectedRole) {
-          setMessage(`This account is registered as ${profile.role}. Please go back and select the correct role.`);
-          await supabase.auth.signOut();
-          return;
-        }
-
-        localStorage.setItem("access_token", data.session.access_token);
-        localStorage.setItem("role", profile.role);
-        localStorage.setItem("user_id", data.user.id);
-        
-        setMessage(`Welcome ${profile.role}! Login successful.`);
-        
-        if (onLoginSuccess) {
-          onLoginSuccess(email, password);
-        } else {
-          window.location.reload();
-        }
-        
-      } catch (profileErr) {
-        console.error("Profile handling error:", profileErr);
-        setMessage(`Profile error: ${profileErr.message}`);
+      // 3. Validate role and active status
+      if (!user.is_active) {
+        setMessage("Your account is pending admin approval.");
+        localStorage.removeItem("token");
+        return;
       }
 
+      if (user.role !== selectedRole) {
+        setMessage(`This account is registered as ${user.role}. Please go back and select the correct role.`);
+        localStorage.removeItem("token");
+        return;
+      }
+
+      // 4. Store user info and succeed
+      localStorage.setItem("user", JSON.stringify(user));
+      setMessage(`Welcome ${user.role}! Login successful.`);
+
+      if (onLoginSuccess) {
+        onLoginSuccess(user);
+      } else {
+        window.location.reload();
+      }
     } catch (error) {
       console.error("Login error:", error);
-      
-      if (error.message.includes("Invalid login credentials")) {
+      setDebugInfo(`Error: ${error.message}`);
+
+      if (error.response?.status === 401) {
         setMessage("Invalid email or password");
-      } else if (error.message.includes("Email not confirmed")) {
-        setMessage("Please confirm your email address first");
+      } else if (error.response?.status === 403) {
+        setMessage("Account not active or insufficient permissions");
       } else {
         setMessage(`Login failed: ${error.message}`);
       }
+      localStorage.removeItem("token");
     } finally {
       setLoading(false);
     }
