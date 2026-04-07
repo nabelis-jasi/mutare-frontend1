@@ -1,8 +1,9 @@
+// src/components/fieldOperator/MaintenanceRecords.jsx
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../../supabaseClient';
+import api from "../../api/api";
 
 export default function MaintenanceRecords({ userId, selectedAsset, onClose }) {
-  const [activeTab, setActiveTab] = useState(selectedAsset ? 'edit' : 'assets'); // show edit tab if asset selected
+  const [activeTab, setActiveTab] = useState(selectedAsset ? 'edit' : 'assets');
   const [manholes, setManholes] = useState([]);
   const [pipelines, setPipelines] = useState([]);
   const [loadingAssets, setLoadingAssets] = useState(false);
@@ -20,7 +21,7 @@ export default function MaintenanceRecords({ userId, selectedAsset, onClose }) {
   const [editMessage, setEditMessage] = useState('');
   const [editSaving, setEditSaving] = useState(false);
 
-  // Maintenance request state (unchanged)
+  // Maintenance request state
   const [featureType, setFeatureType] = useState('manhole');
   const [featureId, setFeatureId] = useState('');
   const [asset, setAsset] = useState(null);
@@ -63,14 +64,21 @@ export default function MaintenanceRecords({ userId, selectedAsset, onClose }) {
 
   const fetchAllAssets = async () => {
     setLoadingAssets(true);
-    const { data: manholeData } = await supabase.from('waste_water_manhole').select('*');
-    const { data: pipeData } = await supabase.from('waste_water_pipeline').select('*');
-    if (manholeData) setManholes(manholeData);
-    if (pipeData) setPipelines(pipeData);
-    setLoadingAssets(false);
+    try {
+      const [manholesRes, pipelinesRes] = await Promise.all([
+        api.get('/manholes'),
+        api.get('/pipelines')
+      ]);
+      setManholes(manholesRes.data || []);
+      setPipelines(pipelinesRes.data || []);
+    } catch (err) {
+      console.error('Error fetching assets', err);
+    } finally {
+      setLoadingAssets(false);
+    }
   };
 
-  // Maintenance request functions (unchanged from your previous version)
+  // Maintenance request functions
   useEffect(() => {
     if (featureId && featureId.trim() !== '') fetchAsset();
     else setAsset(null);
@@ -80,16 +88,27 @@ export default function MaintenanceRecords({ userId, selectedAsset, onClose }) {
 
   const fetchAsset = async () => {
     setLoading(true);
-    const table = featureType === 'manhole' ? 'waste_water_manhole' : 'waste_water_pipeline';
-    const { data, error } = await supabase.from(table).select('*').eq('id', featureId).single();
-    if (error) setAsset(null);
-    else setAsset(data);
-    setLoading(false);
+    try {
+      const endpoint = featureType === 'manhole' ? `/manholes/${featureId}` : `/pipelines/${featureId}`;
+      const res = await api.get(endpoint);
+      setAsset(res.data);
+    } catch (err) {
+      setAsset(null);
+      console.error('Asset not found', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const fetchMyRecords = async () => {
-    const { data } = await supabase.from('maintenance_records').select('*').eq('created_by', userId).order('created_at', { ascending: false });
-    if (data) setRecords(data);
+    try {
+      const res = await api.get('/maintenance');
+      // Backend returns all maintenance records; we filter for current user
+      const myRecords = res.data.filter(r => r.created_by === userId);
+      setRecords(myRecords);
+    } catch (err) {
+      console.error('Error fetching maintenance records', err);
+    }
   };
 
   const handleChange = (field, value) => setFormData(prev => ({ ...prev, [field]: value }));
@@ -98,18 +117,35 @@ export default function MaintenanceRecords({ userId, selectedAsset, onClose }) {
     e.preventDefault();
     if (!asset) { setMessage('Please select a valid asset'); return; }
     setSaving(true);
-    const record = { feature_type: featureType, feature_id: featureId, ...formData, created_by: userId, status: 'pending', synced: false };
-    const { error } = await supabase.from('maintenance_records').insert([record]);
-    if (error) setMessage(`❌ Error: ${error.message}`);
-    else {
+    try {
+      await api.post('/maintenance', {
+        feature_type: featureType,
+        feature_id: featureId,
+        ...formData,
+        created_by: userId,
+        status: 'pending',
+        synced: false
+      });
       setMessage('✅ Maintenance request submitted for approval.');
-      setFormData({ maintenance_type: 'inspection', description: '', priority: 'medium', scheduled_date: '', technician: '', notes: '' });
-      setFeatureId(''); setAsset(null); fetchMyRecords();
+      setFormData({
+        maintenance_type: 'inspection',
+        description: '',
+        priority: 'medium',
+        scheduled_date: '',
+        technician: '',
+        notes: ''
+      });
+      setFeatureId('');
+      setAsset(null);
+      fetchMyRecords();
+    } catch (err) {
+      setMessage(`❌ Error: ${err.response?.data?.error || err.message}`);
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
-  // Edit asset submission
+  // Edit asset submission (propose changes)
   const handleEditSubmit = async () => {
     if (!editAsset) return;
     const proposed = {};
@@ -125,22 +161,24 @@ export default function MaintenanceRecords({ userId, selectedAsset, onClose }) {
       return;
     }
     setEditSaving(true);
-    const { error } = await supabase.from('asset_edits').insert([{
-      feature_type: editAsset.table_name || (editAsset.hasOwnProperty('depth') ? 'manhole' : 'pipeline'),
-      feature_id: editAsset.id,
-      proposed_data: proposed,
-      created_by: userId,
-      status: 'pending'
-    }]);
-    if (error) setEditMessage(`❌ Error: ${error.message}`);
-    else {
+    try {
+      await api.post('/asset-edits', {
+        feature_type: editAsset.hasOwnProperty('depth') ? 'manhole' : 'pipeline',
+        feature_id: editAsset.id,
+        proposed_data: proposed,
+        created_by: userId,
+        status: 'pending'
+      });
       setEditMessage('✅ Edit submitted for engineer approval.');
       setTimeout(() => { if (onClose) onClose(); }, 1500);
+    } catch (err) {
+      setEditMessage(`❌ Error: ${err.response?.data?.error || err.message}`);
+    } finally {
+      setEditSaving(false);
     }
-    setEditSaving(false);
   };
 
-  // Helper functions
+  // Helper functions for status colours
   const getStatusStyle = (condition) => {
     if (!condition) return { color: '#6c757d', bg: '#e9ecef', label: 'Unknown' };
     const s = String(condition).toLowerCase();
@@ -159,7 +197,6 @@ export default function MaintenanceRecords({ userId, selectedAsset, onClose }) {
     }
   };
 
-  // Styles (same as before, plus edit form styles)
   const styles = {
     container: {
       position: "absolute", top: "80px", right: "20px", width: "750px", maxWidth: "90vw",
@@ -256,16 +293,150 @@ export default function MaintenanceRecords({ userId, selectedAsset, onClose }) {
           </>
         )}
 
-        {/* Asset List Tab (same as before, but we'll keep it simple) */}
+        {/* Asset List Tab */}
         {activeTab === 'assets' && (
-          // ... your existing asset list JSX (manholes/pipelines table) ...
-          <div>Asset list – reuse from previous version</div>
+          <>
+            <h4>Manholes</h4>
+            {loadingAssets ? <div>Loading assets...</div> : (
+              <table style={styles.table}>
+                <thead>
+                  <tr><th style={styles.th}>ID</th><th style={styles.th}>Invert Level</th><th style={styles.th}>Ground Level</th><th style={styles.th}>Depth</th><th style={styles.th}>Status</th><th style={styles.th}>Inspector</th><th style={styles.th}>Inspection Date</th></tr>
+                </thead>
+                <tbody>
+                  {manholes.map(m => {
+                    const status = getStatusStyle(m.condition_status);
+                    return (
+                      <tr key={m.id}>
+                        <td style={styles.td}>{m.id}</td>
+                        <td style={styles.td}>{m.invert_level ?? 'N/A'}</td>
+                        <td style={styles.td}>{m.ground_level ?? 'N/A'}</td>
+                        <td style={styles.td}>{m.depth ?? 'N/A'}</td>
+                        <td style={styles.td}><span style={{...styles.statusBadge, backgroundColor: status.bg, color: status.color}}>{status.label}</span></td>
+                        <td style={styles.td}>{m.inspector || '—'}</td>
+                        <td style={styles.td}>{m.last_inspection_date || '—'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+            <h4 style={{ marginTop: "1.5rem" }}>Pipelines</h4>
+            {loadingAssets ? <div>Loading pipelines...</div> : (
+              <table style={styles.table}>
+                <thead><tr><th style={styles.th}>ID</th><th style={styles.th}>Status</th><th style={styles.th}>Inspector</th><th style={styles.th}>Inspection Date</th></tr></thead>
+                <tbody>
+                  {pipelines.map(p => {
+                    const status = getStatusStyle(p.condition_status);
+                    return (
+                      <tr key={p.id}>
+                        <td style={styles.td}>{p.id}</td>
+                        <td style={styles.td}><span style={{...styles.statusBadge, backgroundColor: status.bg, color: status.color}}>{status.label}</span></td>
+                        <td style={styles.td}>{p.inspector || '—'}</td>
+                        <td style={styles.td}>{p.last_inspection_date || '—'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </>
         )}
 
-        {/* Maintenance Requests Tab (same as before) */}
+        {/* Maintenance Requests Tab */}
         {activeTab === 'requests' && (
-          // ... your existing maintenance request form and list ...
-          <div>Maintenance requests – reuse from previous version</div>
+          <>
+            {showForm && (
+              <>
+                <h4>Submit New Request</h4>
+                <div style={styles.row}>
+                  <label style={styles.label}>Asset Type</label>
+                  <select style={styles.select} value={featureType} onChange={(e) => { setFeatureType(e.target.value); setFeatureId(''); setAsset(null); }}>
+                    <option value="manhole">Manhole</option>
+                    <option value="pipeline">Pipeline</option>
+                  </select>
+                </div>
+                <div style={styles.row}>
+                  <label style={styles.label}>Asset ID</label>
+                  <input style={styles.input} type="text" placeholder={`Enter ${featureType} ID`} value={featureId} onChange={(e) => setFeatureId(e.target.value)} />
+                </div>
+                {loading && <div>Loading asset...</div>}
+                {asset && (
+                  <div style={styles.row}>
+                    <div style={styles.readonly}>
+                      <strong>Current Asset Info (read-only)</strong><br />
+                      {featureType === 'manhole' ? (
+                        <>📍 Location: {asset.location ? `${asset.location.coordinates[1]}, ${asset.location.coordinates[0]}` : 'N/A'}<br />
+                        🔧 Condition: {asset.condition_status || 'Unknown'}<br />
+                        🕒 Last Inspection: {asset.last_inspection_date || 'Never'}<br />
+                        📏 Depth: {asset.depth || 'N/A'}<br />
+                        🔽 Invert Level: {asset.invert_level || 'N/A'}<br />
+                        🟫 Ground Level: {asset.ground_level || 'N/A'}</>
+                      ) : (
+                        <>📍 Location: {asset.location ? `${asset.location.coordinates[1]}, ${asset.location.coordinates[0]}` : 'N/A'}<br />
+                        🔧 Condition: {asset.condition_status || 'Unknown'}<br />
+                        🕒 Last Inspection: {asset.last_inspection_date || 'Never'}</>
+                      )}
+                    </div>
+                  </div>
+                )}
+                <form onSubmit={handleSubmit}>
+                  <div style={styles.row}>
+                    <label style={styles.label}>Maintenance Type</label>
+                    <select style={styles.select} value={formData.maintenance_type} onChange={e => handleChange('maintenance_type', e.target.value)}>
+                      <option value="inspection">Inspection</option>
+                      <option value="cleaning">Cleaning</option>
+                      <option value="repair">Repair</option>
+                      <option value="replacement">Replacement</option>
+                      <option value="emergency">Emergency</option>
+                    </select>
+                  </div>
+                  <div style={styles.row}>
+                    <label style={styles.label}>Priority</label>
+                    <select style={styles.select} value={formData.priority} onChange={e => handleChange('priority', e.target.value)}>
+                      <option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option>
+                    </select>
+                  </div>
+                  <div style={styles.row}>
+                    <label style={styles.label}>Description</label>
+                    <textarea style={styles.textarea} placeholder="Describe the work needed" value={formData.description} onChange={e => handleChange('description', e.target.value)} />
+                  </div>
+                  <div style={styles.row}>
+                    <label style={styles.label}>Scheduled Date</label>
+                    <input style={styles.input} type="date" value={formData.scheduled_date} onChange={e => handleChange('scheduled_date', e.target.value)} />
+                  </div>
+                  <div style={styles.row}>
+                    <label style={styles.label}>Technician (optional)</label>
+                    <input style={styles.input} type="text" placeholder="Assigned technician" value={formData.technician} onChange={e => handleChange('technician', e.target.value)} />
+                  </div>
+                  <div style={styles.row}>
+                    <label style={styles.label}>Notes (optional)</label>
+                    <textarea style={styles.textarea} placeholder="Additional notes" value={formData.notes} onChange={e => handleChange('notes', e.target.value)} />
+                  </div>
+                  <button type="submit" style={{...styles.button, ...styles.submitBtn}} disabled={saving}>{saving ? 'Submitting...' : 'Submit Request'}</button>
+                </form>
+                {message && <div style={{...styles.message, backgroundColor: message.includes('✅') ? '#d4edda' : '#f8d7da', color: message.includes('✅') ? '#155724' : '#721c24'}}>{message}</div>}
+                <hr style={{ margin: '1rem 0' }} />
+              </>
+            )}
+            <h4>My Requests</h4>
+            {records.length === 0 ? <div>No maintenance requests yet.</div> : records.map(record => {
+              const status = record.status;
+              return (
+                <div key={record.id} style={styles.recordItem}>
+                  <div style={styles.recordHeader}>
+                    <span><strong>{record.feature_type.toUpperCase()}</strong> ID: {record.feature_id}</span>
+                    <span style={{...styles.recordStatus, ...(status === 'pending' ? styles.pendingBadge : status === 'approved' ? styles.approvedBadge : styles.rejectedBadge)}}>{status}</span>
+                  </div>
+                  <div><strong>{record.maintenance_type}</strong> – {record.description}</div>
+                  <div>Priority: <span style={{ color: getPriorityColor(record.priority) }}>{record.priority}</span></div>
+                  {record.scheduled_date && <div>📅 Scheduled: {record.scheduled_date}</div>}
+                  {record.technician && <div>👤 Tech: {record.technician}</div>}
+                  {record.notes && <div>📝 {record.notes}</div>}
+                  <div style={{ fontSize: '0.7rem', color: '#999', marginTop: '0.5rem' }}>Submitted: {new Date(record.created_at).toLocaleString()}</div>
+                </div>
+              );
+            })}
+          </>
         )}
       </div>
     </div>
