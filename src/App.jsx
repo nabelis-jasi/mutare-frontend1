@@ -12,23 +12,17 @@ import AdminApprove from "./components/AdminApprove";
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
-  const [selectedRole, setSelectedRole] = useState(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [role, setRole] = useState(null);
-  const [userId, setUserId] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [userId] = useState("demo-user-123");
 
   const [manholes, setManholes] = useState([]);
   const [pipes, setPipes] = useState([]);
 
   const handleSplashComplete = () => setShowSplash(false);
 
-  const handleRoleSelect = (roleId) => {
-    // Demo mode: automatically authenticate with the selected role
-    setRole(roleId);
-    setUserId(1); // dummy user id
-    setIsAuthenticated(true);
-    setSelectedRole(null);
+  const handleRoleSelect = (selectedRole) => {
+    setRole(selectedRole);
     fetchData();
   };
 
@@ -42,45 +36,12 @@ export default function App() {
       setPipes(pipesRes.data || []);
     } catch (err) {
       console.error("Error fetching data:", err);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleLogout = async () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    setIsAuthenticated(false);
-    setRole(null);
-    setUserId(null);
-    setSelectedRole(null);
-    setShowSplash(true);
-    setManholes([]);
-    setPipes([]);
-  };
-
-  // Check for existing session on mount
-  useEffect(() => {
-    const checkSession = async () => {
-      setLoading(true);
-      const token = localStorage.getItem("token");
-      const storedUser = localStorage.getItem("user");
-      if (token && storedUser) {
-        try {
-          const user = JSON.parse(storedUser);
-          await api.get("/me");
-          setRole(user.role);
-          setUserId(user.id);
-          setIsAuthenticated(true);
-          setShowSplash(false);
-          await fetchData();
-        } catch (err) {
-          localStorage.removeItem("token");
-          localStorage.removeItem("user");
-        }
-      }
-      setLoading(false);
-    };
-    checkSession();
-  }, []);
+  const handleDataRefresh = () => fetchData();
 
   // Global full‑screen styles
   useEffect(() => {
@@ -101,7 +62,13 @@ export default function App() {
     return () => document.head.removeChild(style);
   }, []);
 
-  const handleDataRefresh = () => fetchData();
+  if (showSplash) {
+    return <Splash onComplete={handleSplashComplete} />;
+  }
+
+  if (!role) {
+    return <RoleSelection onSelectRole={handleRoleSelect} />;
+  }
 
   if (loading) {
     return (
@@ -111,70 +78,58 @@ export default function App() {
         alignItems: "center",
         height: "100vh"
       }}>
-        <p>Loading...</p>
+        <p>Loading dashboard...</p>
       </div>
     );
   }
 
-  if (showSplash) {
-    return <Splash onComplete={handleSplashComplete} />;
-  }
+  return (
+    <div style={{
+      position: "absolute",
+      inset: 0,
+      display: "flex",
+      flexDirection: "column",
+      backgroundColor: "#f0f2f5"
+    }}>
+      <main style={{ flex: 1, overflow: "hidden" }}>
+        
+        {role === "field-collector" && (
+          <CollectorDashboard
+            manholes={manholes}
+            pipes={pipes}
+            userId={userId}
+            role={role}
+            onDataRefresh={handleDataRefresh}
+          />
+        )}
 
-  if (isAuthenticated) {
-    return (
-      <div style={{
-        position: "absolute",
-        inset: 0,
-        display: "flex",
-        flexDirection: "column",
-        backgroundColor: "#f0f2f5"
-      }}>
-        <main style={{ flex: 1, overflow: "hidden" }}>
-          
-          {role === "field-collector" && (
-            <CollectorDashboard
-              manholes={manholes}
-              pipes={pipes}
-              userId={userId}
-              role={role}
-              onDataRefresh={handleDataRefresh}
-              onLogout={handleLogout}
-            />
-          )}
+        {role === "field-operator" && (
+          <OperatorDashboard
+            manholes={manholes}
+            pipes={pipes}
+            userId={userId}
+            role={role}
+            onDataRefresh={handleDataRefresh}
+          />
+        )}
 
-          {role === "field-operator" && (
-            <OperatorDashboard
-              manholes={manholes}
-              pipes={pipes}
-              userId={userId}
-              role={role}
-              onDataRefresh={handleDataRefresh}
-              onLogout={handleLogout}
-            />
-          )}
+        {role === "engineer" && (
+          <EngineerDashboard
+            manholes={manholes}
+            pipes={pipes}
+            userId={userId}
+            role={role}
+            onDataRefresh={handleDataRefresh}
+          />
+        )}
 
-          {role === "engineer" && (
-            <EngineerDashboard
-              manholes={manholes}
-              pipes={pipes}
-              userId={userId}
-              role={role}
-              onDataRefresh={handleDataRefresh}
-              onLogout={handleLogout}
-            />
-          )}
+        {role === "admin" && (
+          <div style={{ padding: "2rem", height: "100%", overflow: "auto" }}>
+            <AdminApprove userId={userId} />
+          </div>
+        )}
 
-          {role === "admin" && (
-            <div style={{ padding: "2rem", height: "100%", overflow: "auto" }}>
-              <AdminApprove userId={userId} />
-            </div>
-          )}
-
-        </main>
-      </div>
-    );
-  }
-
-  // No authenticated session → show role selection
-  return <RoleSelection onSelectRole={handleRoleSelect} />;
+      </main>
+    </div>
+  );
 }
