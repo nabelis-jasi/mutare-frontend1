@@ -8,7 +8,7 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-// Request interceptor: add token
+// Request interceptor: add token if present
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
@@ -20,15 +20,12 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Response interceptor: handle 401 (unauthorised)
+// Response interceptor: handle errors without redirecting to /login
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      window.location.href = '/login';
-    }
+    // Log the error for debugging, but do not redirect
+    console.error('API Error:', error.response?.status, error.message);
     return Promise.reject(error);
   }
 );
