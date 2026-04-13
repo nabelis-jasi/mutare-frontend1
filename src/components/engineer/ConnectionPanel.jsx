@@ -1,6 +1,6 @@
 // src/components/engineer/ConnectionsPanel.jsx
 import React, { useState, useEffect } from 'react';
-import api from '../../api';
+import api from '../../api/api';
 
 export default function ConnectionsPanel({ onClose, onConnectionActivated }) {
     const [connections, setConnections] = useState([]);
