@@ -13,19 +13,40 @@ import FormBuilder from './FormBuilder';
 import FormList from './FormList';
 import SubmissionsList from './SubmissionsList';
 import PendingEdits from './PendingEdits';
-import ConnectionsPanel from './ConnectionsPanel';     // NEW
-import AnalyticsDashboard from './AnalyticsDashboard'; // NEW
+import ConnectionsPanel from './ConnectionsPanel';
+import AnalyticsDashboard from './AnalyticsDashboard';
 import './Dashboard.css';
 
-export default function EngineerDashboard({ manholes, pipes, userId, role, onDataRefresh, userProfile }) {
+export default function EngineerDashboard({ user, onLogout }) {
+  // Extract user info from props
+  const userId = user?.id;
+  const role = user?.role || 'engineer';
+  const userProfile = user;
+
   const [activePanel, setActivePanel] = useState(null);
   const [selectedFeature, setFeature] = useState(null);
   const [selectedForm, setSelectedForm] = useState(null);
   const [mapInstance, setMapInstance] = useState(null);
   const [pendingEditCount, setPendingEditCount] = useState(0);
+  
+  // Data state for manholes and pipelines (fetched from active connection)
+  const [manholes, setManholes] = useState([]);
+  const [pipes, setPipelines] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [connectionActive, setConnectionActive] = useState(false);
 
   // Fetch pending edit count for badge
-  useEffect(() => { fetchPendingCount(); }, []);
+  useEffect(() => { 
+    fetchPendingCount(); 
+  }, []);
+
+  // Fetch manholes and pipelines when active connection exists
+  useEffect(() => {
+    if (connectionActive) {
+      fetchData();
+    }
+  }, [connectionActive]);
+
   const fetchPendingCount = async () => {
     try {
       const res = await api.get('/asset-edits?status=pending');
@@ -35,6 +56,39 @@ export default function EngineerDashboard({ manholes, pipes, userId, role, onDat
       setPendingEditCount(0);
     }
   };
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const [manholesRes, pipelinesRes] = await Promise.all([
+        api.get('/manholes'),
+        api.get('/pipelines')
+      ]);
+      setManholes(manholesRes.data || []);
+      setPipelines(pipelinesRes.data || []);
+    } catch (err) {
+      console.error('Error fetching spatial data', err);
+      // If no active connection, don't show error repeatedly
+      if (err.response?.status === 503) {
+        setConnectionActive(false);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const checkConnection = async () => {
+    try {
+      await api.get('/connections/active');
+      setConnectionActive(true);
+    } catch (err) {
+      setConnectionActive(false);
+    }
+  };
+
+  useEffect(() => {
+    checkConnection();
+  }, []);
 
   const handleFeatureClick = (feature) => {
     setFeature(feature);
@@ -53,14 +107,24 @@ export default function EngineerDashboard({ manholes, pipes, userId, role, onDat
 
   const handleFormSaved = () => {
     setSelectedForm(null);
-    onDataRefresh();
+    onDataRefresh?.();
   };
 
-  // Tool rail definitions – added Connections and Analytics
+  const handleDataRefresh = () => {
+    fetchData();
+    fetchPendingCount();
+  };
+
+  const handleConnectionActivated = () => {
+    checkConnection();
+    fetchData();
+  };
+
+  // Tool rail definitions
   const tools = [
     { id: 'home',        icon: '🏠', label: 'Home',        color: '#4aad4a', desc: 'Overview & stats' },
-    { id: 'connections', icon: '🔌', label: 'Connections', color: '#22d3ee', desc: 'Manage DB & GeoServer' }, // NEW
-    { id: 'analytics',   icon: '📊', label: 'Analytics',   color: '#f59e0b', desc: 'Reports & KPIs' },        // NEW
+    { id: 'connections', icon: '🔌', label: 'Connections', color: '#22d3ee', desc: 'Manage DB & GeoServer' },
+    { id: 'analytics',   icon: '📊', label: 'Analytics',   color: '#f59e0b', desc: 'Reports & KPIs' },
     { id: 'editor',      icon: '✏️', label: 'Edit',        color: '#8fdc00', desc: 'Edit manhole/pipeline' },
     { id: 'uploader',    icon: '📤', label: 'Upload',      color: '#4aad4a', desc: 'Import shapefile' },
     { id: 'sync',        icon: '🔄', label: 'Sync',        color: '#22d3ee', desc: 'Push / pull data' },
@@ -68,7 +132,18 @@ export default function EngineerDashboard({ manholes, pipes, userId, role, onDat
     { id: 'formBuilder', icon: '📝', label: 'Forms',       color: '#8fdc00', desc: 'Create/edit forms' },
     { id: 'submissions', icon: '📋', label: 'Submissions', color: '#f59e0b', desc: 'Review submissions' },
     { id: 'pendingEdits',icon: '🔖', label: 'Edits',       color: '#f59e0b', desc: 'Pending asset edits', badge: pendingEditCount },
+    { id: 'profile',     icon: '👤', label: 'Profile',     color: '#4aad4a', desc: 'User profile' },
+    { id: 'settings',    icon: '⚙️', label: 'Settings',    color: '#4aad4a', desc: 'App settings' },
   ];
+
+  // Show loading state while checking connection or fetching data
+  if (loading && connectionActive) {
+    return (
+      <div className="wd-root">
+        <div className="loading-container">Loading wastewater data...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="wd-root">
@@ -86,16 +161,40 @@ export default function EngineerDashboard({ manholes, pipes, userId, role, onDat
         <div className="wd-topbar-sep" />
 
         <div className="wd-chips">
-          <div className="wd-chip"><span className="dot dot-green" />{manholes?.length ?? 0} Manholes</div>
-          <div className="wd-chip"><span className="dot dot-lime"  />{pipes?.length    ?? 0} Pipelines</div>
-          <div className="wd-chip"><span className="dot dot-amber" />Live</div>
+          <div className="wd-chip">
+            <span className="dot dot-green" />
+            {manholes?.length ?? 0} Manholes
+          </div>
+          <div className="wd-chip">
+            <span className="dot dot-lime" />
+            {pipes?.length ?? 0} Pipelines
+          </div>
+          <div className="wd-chip">
+            <span className="dot dot-amber" />
+            {connectionActive ? 'Connected' : 'No Connection'}
+          </div>
         </div>
 
         <div className="wd-topbar-actions">
-          <button className={`wd-icon-btn${activePanel === 'profile'  ? ' active' : ''}`}
-            onClick={() => toggle('profile')}  title="User Profile">👤</button>
-          <button className={`wd-icon-btn${activePanel === 'settings' ? ' active' : ''}`}
-            onClick={() => toggle('settings')} title="Settings">⚙️</button>
+          <button 
+            className={`wd-icon-btn${activePanel === 'profile' ? ' active' : ''}`}
+            onClick={() => toggle('profile')}  
+            title="User Profile"
+          >
+            👤
+          </button>
+          <button 
+            className={`wd-icon-btn${activePanel === 'settings' ? ' active' : ''}`}
+            onClick={() => toggle('settings')} 
+            title="Settings"
+          >
+            ⚙️
+          </button>
+          {onLogout && (
+            <button className="wd-icon-btn" onClick={onLogout} title="Logout">
+              ⎋
+            </button>
+          )}
           <div className="wd-role-pill">{role ?? 'Engineer'}</div>
         </div>
       </header>
@@ -116,14 +215,16 @@ export default function EngineerDashboard({ manholes, pipes, userId, role, onDat
       <nav className="wd-rail">
         {tools.map((t, i) => (
           <React.Fragment key={t.id}>
-            {i === 2 && <div className="wd-rail-sep" />}  {/* separator after Analytics */}
+            {i === 2 && <div className="wd-rail-sep" />}
             <button
               className={`wd-rail-btn${activePanel === t.id ? ' active' : ''}`}
               style={{ '--rail-color': t.color }}
               onClick={() => toggle(t.id)}
               title={`${t.label} — ${t.desc}`}
             >
-              {t.badge > 0 && <span className="wd-rail-badge">{t.badge > 99 ? '99+' : t.badge}</span>}
+              {t.badge > 0 && (
+                <span className="wd-rail-badge">{t.badge > 99 ? '99+' : t.badge}</span>
+              )}
               <span style={{ fontSize: 16, lineHeight: 1, display: 'block' }}>{t.icon}</span>
               <span style={{
                 display: 'block',
@@ -151,14 +252,18 @@ export default function EngineerDashboard({ manholes, pipes, userId, role, onDat
       {/* PANELS */}
       {activePanel === 'home' && (
         <HomePanel
-          manholes={manholes} pipes={pipes}
+          manholes={manholes}
+          pipes={pipes}
           onClose={() => setActivePanel(null)}
           onNavigate={toggle}
         />
       )}
 
       {activePanel === 'connections' && (
-        <ConnectionsPanel onClose={() => setActivePanel(null)} onConnectionActivated={() => window.location.reload()} />
+        <ConnectionsPanel 
+          onClose={() => setActivePanel(null)} 
+          onConnectionActivated={handleConnectionActivated}
+        />
       )}
 
       {activePanel === 'analytics' && (
@@ -168,14 +273,14 @@ export default function EngineerDashboard({ manholes, pipes, userId, role, onDat
       {activePanel === 'editor' && (
         <DataEditor
           feature={selectedFeature}
-          onSave={() => { setActivePanel(null); onDataRefresh(); }}
+          onSave={() => { setActivePanel(null); handleDataRefresh(); }}
           onCancel={() => setActivePanel(null)}
         />
       )}
 
       {activePanel === 'uploader' && (
         <ShapefileUploader
-          onUploadComplete={onDataRefresh}
+          onUploadComplete={handleDataRefresh}
           onClose={() => setActivePanel(null)}
         />
       )}
@@ -183,14 +288,14 @@ export default function EngineerDashboard({ manholes, pipes, userId, role, onDat
       {activePanel === 'sync' && (
         <DataSync
           userId={userId}
-          onSyncComplete={onDataRefresh}
+          onSyncComplete={handleDataRefresh}
           onClose={() => setActivePanel(null)}
         />
       )}
 
       {activePanel === 'flags' && (
         <FlagManager
-          onFlagManaged={onDataRefresh}
+          onFlagManaged={handleDataRefresh}
           onClose={() => setActivePanel(null)}
         />
       )}
@@ -218,7 +323,7 @@ export default function EngineerDashboard({ manholes, pipes, userId, role, onDat
       {activePanel === 'submissions' && (
         <SubmissionsList
           onClose={() => setActivePanel(null)}
-          onRefresh={onDataRefresh}
+          onRefresh={handleDataRefresh}
         />
       )}
 
@@ -226,14 +331,17 @@ export default function EngineerDashboard({ manholes, pipes, userId, role, onDat
       {activePanel === 'pendingEdits' && (
         <PendingEdits
           onClose={() => setActivePanel(null)}
-          onEditProcessed={() => { fetchPendingCount(); onDataRefresh(); }}
+          onEditProcessed={() => { fetchPendingCount(); handleDataRefresh(); }}
         />
       )}
 
       {activePanel === 'profile' && (
         <ProfilePanel
-          userId={userId} role={role} userProfile={userProfile}
+          userId={userId}
+          role={role}
+          userProfile={userProfile}
           onClose={() => setActivePanel(null)}
+          onLogout={onLogout}
         />
       )}
 
