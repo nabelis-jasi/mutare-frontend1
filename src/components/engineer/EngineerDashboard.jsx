@@ -13,7 +13,7 @@ import FormBuilder from './FormBuilder';
 import FormList from './FormList';
 import SubmissionsList from './SubmissionsList';
 import PendingEdits from './PendingEdits';
-import ConnectionPanel from './ConnectionPanel';
+import ConnectionsPanel from './ConnectionsPanel';
 import AnalyticsDashboard from './AnalyticsDashboard';
 import './Dashboard.css';
 
