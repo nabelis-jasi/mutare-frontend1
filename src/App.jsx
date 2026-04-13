@@ -8,7 +8,6 @@ import RoleSelection from "./components/RoleSelection";
 import CollectorDashboard from "./components/fieldCollector/CollectorDashboard";
 import OperatorDashboard from "./components/fieldOperator/OperatorDashboard";
 import EngineerDashboard from "./components/engineer/EngineerDashboard";
-import AdminApprove from "./components/AdminApprove";
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
@@ -27,6 +26,7 @@ export default function App() {
   };
 
   const fetchData = async () => {
+    setLoading(true);
     try {
       const [manholesRes, pipesRes] = await Promise.all([
         api.get("/manholes"),
@@ -43,7 +43,7 @@ export default function App() {
 
   const handleDataRefresh = () => fetchData();
 
-  // Global full‑screen styles
+  // Global styles
   useEffect(() => {
     const style = document.createElement("style");
     style.textContent = `
@@ -60,6 +60,12 @@ export default function App() {
     `;
     document.head.appendChild(style);
     return () => document.head.removeChild(style);
+  }, []);
+
+  // Clear any old auth data that might cause issues
+  useEffect(() => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
   }, []);
 
   if (showSplash) {
@@ -121,12 +127,6 @@ export default function App() {
             role={role}
             onDataRefresh={handleDataRefresh}
           />
-        )}
-
-        {role === "admin" && (
-          <div style={{ padding: "2rem", height: "100%", overflow: "auto" }}>
-            <AdminApprove userId={userId} />
-          </div>
         )}
 
       </main>
