@@ -1,22 +1,23 @@
-// src/components/engineer/ConnectionsPanel.jsx
 import React, { useState, useEffect } from 'react';
 import api from '../../api/api';
 
 export default function ConnectionsPanel({ onClose, onConnectionActivated }) {
     const [connections, setConnections] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [testing, setTesting] = useState(false);
     const [editingId, setEditingId] = useState(null);
     const [form, setForm] = useState({
         name: '',
-        pg_host: '',
+        pg_host: 'localhost',
         pg_port: 5432,
         pg_database: '',
-        pg_user: '',
+        pg_user: 'postgres',
         pg_password: '',
-        geoserver_url: ''
+        geoserver_url: 'http://localhost:8080/geoserver/wms'
     });
     const [saving, setSaving] = useState(false);
     const [message, setMessage] = useState('');
+    const [messageType, setMessageType] = useState('');
 
     useEffect(() => {
         fetchConnections();
@@ -29,37 +30,66 @@ export default function ConnectionsPanel({ onClose, onConnectionActivated }) {
             setConnections(res.data);
         } catch (err) {
             console.error('Error fetching connections', err);
-            setMessage('Failed to load connections');
+            showMessage('Failed to load connections', 'error');
         } finally {
             setLoading(false);
+        }
+    };
+
+    const showMessage = (msg, type) => {
+        setMessage(msg);
+        setMessageType(type);
+        setTimeout(() => {
+            setMessage('');
+            setMessageType('');
+        }, 5000);
+    };
+
+    const testConnection = async () => {
+        setTesting(true);
+        try {
+            const res = await api.post('/connections/test', {
+                pg_host: form.pg_host,
+                pg_port: form.pg_port,
+                pg_database: form.pg_database,
+                pg_user: form.pg_user,
+                pg_password: form.pg_password
+            });
+            if (res.data.success) {
+                showMessage('✓ Connection successful!', 'success');
+            }
+        } catch (err) {
+            showMessage(`✗ Connection failed: ${err.response?.data?.error || err.message}`, 'error');
+        } finally {
+            setTesting(false);
         }
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         setSaving(true);
-        setMessage('');
         try {
             if (editingId) {
                 await api.put(`/connections/${editingId}`, form);
-                setMessage('Connection updated successfully');
+                showMessage('Connection updated successfully', 'success');
             } else {
                 await api.post('/connections', form);
-                setMessage('Connection created successfully');
+                showMessage('Connection created successfully', 'success');
+                // Reset form
+                setForm({
+                    name: '',
+                    pg_host: 'localhost',
+                    pg_port: 5432,
+                    pg_database: '',
+                    pg_user: 'postgres',
+                    pg_password: '',
+                    geoserver_url: 'http://localhost:8080/geoserver/wms'
+                });
             }
-            setForm({
-                name: '',
-                pg_host: '',
-                pg_port: 5432,
-                pg_database: '',
-                pg_user: '',
-                pg_password: '',
-                geoserver_url: ''
-            });
             setEditingId(null);
             await fetchConnections();
         } catch (err) {
-            setMessage(err.response?.data?.error || 'Error saving connection');
+            showMessage(`Error: ${err.response?.data?.error || err.message}`, 'error');
         } finally {
             setSaving(false);
         }
@@ -68,22 +98,22 @@ export default function ConnectionsPanel({ onClose, onConnectionActivated }) {
     const activateConnection = async (id) => {
         try {
             await api.put(`/connections/${id}/activate`);
-            setMessage('Connection activated');
+            showMessage('Connection activated', 'success');
             await fetchConnections();
             if (onConnectionActivated) onConnectionActivated();
         } catch (err) {
-            setMessage('Error activating connection');
+            showMessage('Error activating connection', 'error');
         }
     };
 
     const deleteConnection = async (id) => {
-        if (!confirm('Delete this connection?')) return;
+        if (!confirm('Delete this connection? This cannot be undone.')) return;
         try {
             await api.delete(`/connections/${id}`);
-            setMessage('Connection deleted');
+            showMessage('Connection deleted', 'success');
             await fetchConnections();
         } catch (err) {
-            setMessage('Error deleting connection');
+            showMessage('Error deleting connection', 'error');
         }
     };
 
@@ -104,156 +134,340 @@ export default function ConnectionsPanel({ onClose, onConnectionActivated }) {
         setEditingId(null);
         setForm({
             name: '',
-            pg_host: '',
+            pg_host: 'localhost',
             pg_port: 5432,
             pg_database: '',
-            pg_user: '',
+            pg_user: 'postgres',
             pg_password: '',
-            geoserver_url: ''
+            geoserver_url: 'http://localhost:8080/geoserver/wms'
         });
     };
 
-    const styles = {
-        container: {
-            position: "absolute",
-            top: "80px",
-            right: "20px",
-            width: "600px",
-            maxWidth: "90vw",
-            maxHeight: "calc(100vh - 100px)",
-            backgroundColor: "white",
-            borderRadius: "12px",
-            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-            zIndex: 1000,
-            overflow: "hidden",
-            display: "flex",
-            flexDirection: "column",
-        },
-        header: {
-            padding: "1rem",
-            backgroundColor: "#22d3ee",
-            color: "white",
-            fontWeight: "bold",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-        },
-        closeBtn: { background: "none", border: "none", color: "white", fontSize: "1.2rem", cursor: "pointer" },
-        content: { padding: "1rem", overflowY: "auto", flex: 1 },
-        formRow: { marginBottom: "1rem" },
-        label: { display: "block", fontWeight: "bold", marginBottom: "0.25rem", color: "#555" },
-        input: { width: "100%", padding: "0.5rem", borderRadius: "6px", border: "1px solid #ccc" },
-        select: { width: "100%", padding: "0.5rem", borderRadius: "6px", border: "1px solid #ccc" },
-        button: { padding: "0.5rem 1rem", borderRadius: "6px", border: "none", cursor: "pointer", fontWeight: "bold", marginRight: "0.5rem" },
-        submitBtn: { backgroundColor: "#4caf50", color: "white" },
-        cancelBtn: { backgroundColor: "#f44336", color: "white" },
-        activateBtn: { backgroundColor: "#2196f3", color: "white", padding: "0.25rem 0.75rem", fontSize: "0.8rem" },
-        editBtn: { backgroundColor: "#ff9800", color: "white", padding: "0.25rem 0.75rem", fontSize: "0.8rem" },
-        deleteBtn: { backgroundColor: "#f44336", color: "white", padding: "0.25rem 0.75rem", fontSize: "0.8rem" },
-        connectionItem: {
-            border: "1px solid #e0e0e0",
-            borderRadius: "8px",
-            padding: "0.75rem",
-            marginBottom: "0.75rem",
-            backgroundColor: "#fafafa",
-        },
-        activeBadge: {
-            backgroundColor: "#4caf50",
-            color: "white",
-            padding: "2px 8px",
-            borderRadius: "12px",
-            fontSize: "0.7rem",
-            marginLeft: "0.5rem",
-        },
-        message: {
-            marginTop: "1rem",
-            padding: "0.5rem",
-            borderRadius: "4px",
-            textAlign: "center",
-        },
-    };
-
     return (
-        <div style={styles.container}>
-            <div style={styles.header}>
-                <span>🔌 Database & GeoServer Connections</span>
-                <button style={styles.closeBtn} onClick={onClose}>✕</button>
+        <div className="connections-panel">
+            <div className="panel-header">
+                <h2>🔌 Database Connections</h2>
+                <button className="close-btn" onClick={onClose}>×</button>
             </div>
-            <div style={styles.content}>
-                {/* Add/Edit Form */}
-                <form onSubmit={handleSubmit}>
-                    <h4>{editingId ? 'Edit Connection' : 'New Connection'}</h4>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                        <div style={styles.formRow}>
-                            <label style={styles.label}>Connection Name</label>
-                            <input style={styles.input} value={form.name} onChange={e => setForm({...form, name: e.target.value})} required />
+            
+            <div className="panel-content">
+                {/* Connection Form */}
+                <div className="form-section">
+                    <h3>{editingId ? 'Edit Connection' : 'New Connection'}</h3>
+                    <form onSubmit={handleSubmit}>
+                        <div className="form-group">
+                            <label>Connection Name *</label>
+                            <input 
+                                type="text" 
+                                value={form.name} 
+                                onChange={e => setForm({...form, name: e.target.value})}
+                                placeholder="e.g., My Local Database"
+                                required
+                            />
                         </div>
-                        <div style={styles.formRow}>
-                            <label style={styles.label}>PostgreSQL Host</label>
-                            <input style={styles.input} value={form.pg_host} onChange={e => setForm({...form, pg_host: e.target.value})} required />
-                        </div>
-                        <div style={styles.formRow}>
-                            <label style={styles.label}>PostgreSQL Port</label>
-                            <input style={styles.input} type="number" value={form.pg_port} onChange={e => setForm({...form, pg_port: parseInt(e.target.value)})} required />
-                        </div>
-                        <div style={styles.formRow}>
-                            <label style={styles.label}>Database Name</label>
-                            <input style={styles.input} value={form.pg_database} onChange={e => setForm({...form, pg_database: e.target.value})} required />
-                        </div>
-                        <div style={styles.formRow}>
-                            <label style={styles.label}>Database User</label>
-                            <input style={styles.input} value={form.pg_user} onChange={e => setForm({...form, pg_user: e.target.value})} required />
-                        </div>
-                        <div style={styles.formRow}>
-                            <label style={styles.label}>Database Password</label>
-                            <input style={styles.input} type="password" value={form.pg_password} onChange={e => setForm({...form, pg_password: e.target.value})} required />
-                        </div>
-                        <div style={{ ...styles.formRow, gridColumn: 'span 2' }}>
-                            <label style={styles.label}>GeoServer WMS URL</label>
-                            <input style={styles.input} placeholder="http://localhost:8080/geoserver/wms" value={form.geoserver_url} onChange={e => setForm({...form, geoserver_url: e.target.value})} required />
-                        </div>
-                    </div>
-                    <div>
-                        <button type="submit" style={{ ...styles.button, ...styles.submitBtn }} disabled={saving}>
-                            {saving ? 'Saving...' : (editingId ? 'Update' : 'Create')}
-                        </button>
-                        {editingId && <button type="button" style={{ ...styles.button, ...styles.cancelBtn }} onClick={cancelEdit}>Cancel</button>}
-                    </div>
-                </form>
-
-                {message && <div style={{ ...styles.message, backgroundColor: message.includes('success') ? '#d4edda' : '#f8d7da', color: message.includes('success') ? '#155724' : '#721c24' }}>{message}</div>}
-
-                <hr style={{ margin: '1rem 0' }} />
-
-                <h4>Saved Connections</h4>
-                {loading ? (
-                    <div>Loading connections...</div>
-                ) : connections.length === 0 ? (
-                    <div>No connections yet. Create one above.</div>
-                ) : (
-                    connections.map(conn => (
-                        <div key={conn.id} style={styles.connectionItem}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                                <div>
-                                    <strong>{conn.name}</strong>
-                                    {conn.is_active && <span style={styles.activeBadge}>Active</span>}
-                                </div>
-                                <div>
-                                    {!conn.is_active && (
-                                        <button style={{ ...styles.button, ...styles.activateBtn }} onClick={() => activateConnection(conn.id)}>Activate</button>
-                                    )}
-                                    <button style={{ ...styles.button, ...styles.editBtn }} onClick={() => editConnection(conn)}>Edit</button>
-                                    <button style={{ ...styles.button, ...styles.deleteBtn }} onClick={() => deleteConnection(conn.id)}>Delete</button>
-                                </div>
+                        
+                        <div className="form-row">
+                            <div className="form-group">
+                                <label>PostgreSQL Host *</label>
+                                <input 
+                                    type="text" 
+                                    value={form.pg_host} 
+                                    onChange={e => setForm({...form, pg_host: e.target.value})}
+                                    placeholder="localhost"
+                                    required
+                                />
                             </div>
-                            <div style={{ fontSize: '0.8rem', color: '#666' }}>
-                                <div>PostgreSQL: {conn.pg_host}:{conn.pg_port}/{conn.pg_database}</div>
-                                <div>GeoServer: {conn.geoserver_url}</div>
+                            <div className="form-group">
+                                <label>Port *</label>
+                                <input 
+                                    type="number" 
+                                    value={form.pg_port} 
+                                    onChange={e => setForm({...form, pg_port: parseInt(e.target.value)})}
+                                    placeholder="5432"
+                                    required
+                                />
                             </div>
                         </div>
-                    ))
+                        
+                        <div className="form-group">
+                            <label>Database Name *</label>
+                            <input 
+                                type="text" 
+                                value={form.pg_database} 
+                                onChange={e => setForm({...form, pg_database: e.target.value})}
+                                placeholder="your_database"
+                                required
+                            />
+                        </div>
+                        
+                        <div className="form-row">
+                            <div className="form-group">
+                                <label>Username *</label>
+                                <input 
+                                    type="text" 
+                                    value={form.pg_user} 
+                                    onChange={e => setForm({...form, pg_user: e.target.value})}
+                                    placeholder="postgres"
+                                    required
+                                />
+                            </div>
+                            <div className="form-group">
+                                <label>Password *</label>
+                                <input 
+                                    type="password" 
+                                    value={form.pg_password} 
+                                    onChange={e => setForm({...form, pg_password: e.target.value})}
+                                    placeholder="••••••••"
+                                    required
+                                />
+                            </div>
+                        </div>
+                        
+                        <div className="form-group">
+                            <label>GeoServer WMS URL *</label>
+                            <input 
+                                type="text" 
+                                value={form.geoserver_url} 
+                                onChange={e => setForm({...form, geoserver_url: e.target.value})}
+                                placeholder="http://localhost:8080/geoserver/wms"
+                                required
+                            />
+                        </div>
+                        
+                        <div className="form-buttons">
+                            <button type="button" onClick={testConnection} disabled={testing}>
+                                {testing ? 'Testing...' : '🔍 Test Connection'}
+                            </button>
+                            <button type="submit" disabled={saving}>
+                                {saving ? 'Saving...' : (editingId ? 'Update' : 'Create')}
+                            </button>
+                            {editingId && (
+                                <button type="button" onClick={cancelEdit}>Cancel</button>
+                            )}
+                        </div>
+                    </form>
+                </div>
+                
+                {message && (
+                    <div className={`message ${messageType}`}>{message}</div>
                 )}
+                
+                {/* Connections List */}
+                <div className="connections-list">
+                    <h3>Saved Connections</h3>
+                    {loading ? (
+                        <p>Loading...</p>
+                    ) : connections.length === 0 ? (
+                        <p className="empty-state">No connections yet. Create one above.</p>
+                    ) : (
+                        connections.map(conn => (
+                            <div key={conn.id} className={`connection-card ${conn.is_active ? 'active' : ''}`}>
+                                <div className="connection-header">
+                                    <div>
+                                        <strong>{conn.name}</strong>
+                                        {conn.is_active && <span className="active-badge">Active</span>}
+                                    </div>
+                                    <div className="connection-actions">
+                                        {!conn.is_active && (
+                                            <button onClick={() => activateConnection(conn.id)}>Activate</button>
+                                        )}
+                                        <button onClick={() => editConnection(conn)}>Edit</button>
+                                        <button onClick={() => deleteConnection(conn.id)} className="danger">Delete</button>
+                                    </div>
+                                </div>
+                                <div className="connection-details">
+                                    <div>📊 PostgreSQL: {conn.pg_host}:{conn.pg_port}/{conn.pg_database}</div>
+                                    <div>🗺️ GeoServer: {conn.geoserver_url}</div>
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
             </div>
+            
+            <style jsx>{`
+                .connections-panel {
+                    position: fixed;
+                    top: 80px;
+                    right: 20px;
+                    width: 550px;
+                    max-width: 90vw;
+                    max-height: calc(100vh - 100px);
+                    background: white;
+                    border-radius: 12px;
+                    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+                    z-index: 1000;
+                    overflow: hidden;
+                    display: flex;
+                    flex-direction: column;
+                }
+                
+                .panel-header {
+                    padding: 16px 20px;
+                    background: #2196f3;
+                    color: white;
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                }
+                
+                .panel-header h2 {
+                    margin: 0;
+                    font-size: 1.2rem;
+                }
+                
+                .close-btn {
+                    background: none;
+                    border: none;
+                    color: white;
+                    font-size: 24px;
+                    cursor: pointer;
+                }
+                
+                .panel-content {
+                    padding: 20px;
+                    overflow-y: auto;
+                }
+                
+                .form-section {
+                    border-bottom: 1px solid #eee;
+                    padding-bottom: 20px;
+                    margin-bottom: 20px;
+                }
+                
+                .form-section h3 {
+                    margin-top: 0;
+                    margin-bottom: 15px;
+                }
+                
+                .form-group {
+                    margin-bottom: 15px;
+                }
+                
+                .form-group label {
+                    display: block;
+                    margin-bottom: 5px;
+                    font-weight: 500;
+                    font-size: 0.85rem;
+                }
+                
+                .form-group input {
+                    width: 100%;
+                    padding: 8px 12px;
+                    border: 1px solid #ddd;
+                    border-radius: 6px;
+                }
+                
+                .form-row {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 15px;
+                }
+                
+                .form-buttons {
+                    display: flex;
+                    gap: 10px;
+                    margin-top: 10px;
+                }
+                
+                .form-buttons button {
+                    padding: 8px 16px;
+                    border: none;
+                    border-radius: 6px;
+                    cursor: pointer;
+                    font-weight: 500;
+                }
+                
+                .form-buttons button:first-child {
+                    background: #607d8b;
+                    color: white;
+                }
+                
+                .form-buttons button[type="submit"] {
+                    background: #4caf50;
+                    color: white;
+                }
+                
+                .message {
+                    padding: 10px;
+                    border-radius: 6px;
+                    margin-bottom: 20px;
+                }
+                
+                .message.success {
+                    background: #d4edda;
+                    color: #155724;
+                    border: 1px solid #c3e6cb;
+                }
+                
+                .message.error {
+                    background: #f8d7da;
+                    color: #721c24;
+                    border: 1px solid #f5c6cb;
+                }
+                
+                .connections-list h3 {
+                    margin-top: 0;
+                    margin-bottom: 15px;
+                }
+                
+                .connection-card {
+                    border: 1px solid #e0e0e0;
+                    border-radius: 8px;
+                    padding: 12px;
+                    margin-bottom: 12px;
+                }
+                
+                .connection-card.active {
+                    border-color: #4caf50;
+                    background: #f1f8e9;
+                }
+                
+                .connection-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    margin-bottom: 8px;
+                }
+                
+                .active-badge {
+                    background: #4caf50;
+                    color: white;
+                    padding: 2px 8px;
+                    border-radius: 12px;
+                    font-size: 0.7rem;
+                    margin-left: 8px;
+                }
+                
+                .connection-actions {
+                    display: flex;
+                    gap: 8px;
+                }
+                
+                .connection-actions button {
+                    padding: 4px 8px;
+                    font-size: 0.7rem;
+                    border: none;
+                    border-radius: 4px;
+                    cursor: pointer;
+                }
+                
+                .connection-actions button.danger {
+                    background: #f44336;
+                    color: white;
+                }
+                
+                .connection-details {
+                    font-size: 0.8rem;
+                    color: #666;
+                }
+                
+                .empty-state {
+                    text-align: center;
+                    color: #999;
+                    padding: 20px;
+                }
+            `}</style>
         </div>
     );
 }
