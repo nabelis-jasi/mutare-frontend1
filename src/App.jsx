@@ -1,11 +1,7 @@
 // src/App.jsx
 import React, { useState, useEffect } from "react";
 import api from "./api/api";
-import LandingPortal from "./components/LandingPortal";
 import Splash from "./components/Splash";
-import Signup from "./components/Signup";
-import RequestAccess from "./components/RequestAccess";
-import Login from "./components/Login";
 import RoleSelection from "./components/RoleSelection";
 
 // Role-based dashboards
@@ -20,7 +16,6 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [role, setRole] = useState(null);
   const [userId, setUserId] = useState(null);
-  const [activePortal, setActivePortal] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const [manholes, setManholes] = useState([]);
@@ -28,11 +23,13 @@ export default function App() {
 
   const handleSplashComplete = () => setShowSplash(false);
 
-  const handleRoleSelect = (roleId) => setSelectedRole(roleId);
-
-  const handleBackToRoles = () => {
+  const handleRoleSelect = (roleId) => {
+    // Demo mode: automatically authenticate with the selected role
+    setRole(roleId);
+    setUserId(1); // dummy user id
+    setIsAuthenticated(true);
     setSelectedRole(null);
-    setActivePortal(null);
+    fetchData();
   };
 
   const fetchData = async () => {
@@ -48,25 +45,6 @@ export default function App() {
     }
   };
 
-  const handleLogin = async (user) => {
-    // Called from Login component after successful authentication
-    // user object contains { id, email, role, is_active, name }
-    if (!user.is_active) {
-      alert("Your account is pending admin approval.");
-      return;
-    }
-    if (user.role !== selectedRole) {
-      alert(`This account is registered as ${user.role}. Select the correct role.`);
-      return;
-    }
-    setRole(user.role);
-    setUserId(user.id);
-    setIsAuthenticated(true);
-    setSelectedRole(null);
-    setActivePortal(null);
-    await fetchData();
-  };
-
   const handleLogout = async () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
@@ -75,7 +53,6 @@ export default function App() {
     setUserId(null);
     setSelectedRole(null);
     setShowSplash(true);
-    setActivePortal(null);
     setManholes([]);
     setPipes([]);
   };
@@ -89,16 +66,13 @@ export default function App() {
       if (token && storedUser) {
         try {
           const user = JSON.parse(storedUser);
-          // Verify token is still valid by calling /me
           await api.get("/me");
-          // If successful, set session
           setRole(user.role);
           setUserId(user.id);
           setIsAuthenticated(true);
           setShowSplash(false);
           await fetchData();
         } catch (err) {
-          // Token invalid, clear storage
           localStorage.removeItem("token");
           localStorage.removeItem("user");
         }
@@ -108,7 +82,7 @@ export default function App() {
     checkSession();
   }, []);
 
-  // Global styles for full‑screen layout
+  // Global full‑screen styles
   useEffect(() => {
     const style = document.createElement("style");
     style.textContent = `
@@ -201,43 +175,6 @@ export default function App() {
     );
   }
 
-  if (!selectedRole) {
-    return <RoleSelection onSelectRole={handleRoleSelect} />;
-  }
-
-  if (activePortal === "login") {
-    return (
-      <Login
-        selectedRole={selectedRole}
-        onLoginSuccess={handleLogin}
-        onBack={() => setActivePortal(null)}
-      />
-    );
-  }
-
-  if (activePortal === "signup") {
-    return (
-      <Signup
-        selectedRole={selectedRole}
-        onBack={() => setActivePortal(null)}
-      />
-    );
-  }
-
-  if (activePortal === "request") {
-    return (
-      <RequestAccess
-        selectedRole={selectedRole}
-        onBack={() => setActivePortal(null)}
-      />
-    );
-  }
-
-  return (
-    <LandingPortal
-      selectedRole={selectedRole}
-      setActivePortal={setActivePortal}
-      onBackToRoles={handleBackToRoles}
-    />
-  );
+  // No authenticated session → show role selection
+  return <RoleSelection onSelectRole={handleRoleSelect} />;
 }
