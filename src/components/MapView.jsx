@@ -6,9 +6,12 @@ import {
   Polyline,
   useMap,
   useMapEvents,
+  LayersControl,
+  WMSTileLayer,
 } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
+import api from "../api/api";
 
 // ── Fix default marker icons
 delete L.Icon.Default.prototype._getIconUrl;
@@ -175,8 +178,87 @@ function TileSelector({ activeTiles, setActiveTiles }) {
   );
 }
 
+// ── GeoServer Connection Component
+function GeoServerLayers({ geoserverUrl, workspace }) {
+  const [connectionActive, setConnectionActive] = useState(false);
+  const [url, setUrl] = useState(geoserverUrl || 'http://localhost:8080/geoserver/wms');
+  const [ws, setWs] = useState(workspace || 'wastewater');
+
+  useEffect(() => {
+    if (geoserverUrl) {
+      setUrl(geoserverUrl);
+      setConnectionActive(true);
+      return;
+    }
+    
+    const fetchActiveConnection = async () => {
+      try {
+        const res = await api.get('/connections/active');
+        if (res.data && res.data.geoserver_url) {
+          setUrl(res.data.geoserver_url);
+          setWs(res.data.workspace || 'wastewater');
+          setConnectionActive(true);
+        }
+      } catch (err) {
+        console.warn('No active GeoServer connection', err);
+        setConnectionActive(false);
+      }
+    };
+    
+    fetchActiveConnection();
+  }, [geoserverUrl, workspace]);
+
+  if (!connectionActive) return null;
+
+  return (
+    <LayersControl position="topright">
+      <LayersControl.Overlay name="🗺️ Manholes (GeoServer)">
+        <WMSTileLayer
+          url={url}
+          layers={`${ws}:waste_water_manhole`}
+          format="image/png"
+          transparent={true}
+          opacity={0.7}
+          version="1.3.0"
+        />
+      </LayersControl.Overlay>
+      <LayersControl.Overlay name="📏 Pipelines (GeoServer)">
+        <WMSTileLayer
+          url={url}
+          layers={`${ws}:waste_water_pipeline`}
+          format="image/png"
+          transparent={true}
+          opacity={0.7}
+          version="1.3.0"
+        />
+      </LayersControl.Overlay>
+      <LayersControl.Overlay name="🏘️ Suburbs (GeoServer)">
+        <WMSTileLayer
+          url={url}
+          layers={`${ws}:suburbs`}
+          format="image/png"
+          transparent={true}
+          opacity={0.5}
+          version="1.3.0"
+        />
+      </LayersControl.Overlay>
+    </LayersControl>
+  );
+}
+
 // ── MapView
-export default function MapView({ manholes = [], pipes = [], role, userId, onFeatureClick, onMapReady, navPickMode = false, onNavMapClick }) {
+export default function MapView({ 
+  manholes = [], 
+  pipes = [], 
+  role, 
+  userId, 
+  onFeatureClick, 
+  onMapReady, 
+  navPickMode = false, 
+  onNavMapClick,
+  geoserverUrl: propGeoserverUrl,
+  workspace: propWorkspace
+}) {
   const [coords, setCoords] = useState("");
   const [activeTiles, setActiveTiles] = useState(["osm"]);
   const [showLegend, setShowLegend] = useState(true);
@@ -203,7 +285,11 @@ export default function MapView({ manholes = [], pipes = [], role, userId, onFea
         <ZoomReposition />
         <MapBootstrap onMapReady={onMapReady} setCoords={setCoords} pickMode={navPickMode} onMapClick={onNavMapClick} />
         <TileManager activeTiles={activeTiles} />
+        
+        {/* GeoServer WMS Layers */}
+        <GeoServerLayers geoserverUrl={propGeoserverUrl} workspace={propWorkspace} />
 
+        {/* Existing Manhole Markers */}
         {manholes.map((m) => {
           const pt = parsePoint(m.geom);
           if (!pt) return null;
@@ -221,6 +307,7 @@ export default function MapView({ manholes = [], pipes = [], role, userId, onFea
           );
         })}
 
+        {/* Existing Pipeline Polylines */}
         {pipes.map((p) => {
           const positions = parseLine(p.geom);
           if (!positions || positions.length < 2) return null;
