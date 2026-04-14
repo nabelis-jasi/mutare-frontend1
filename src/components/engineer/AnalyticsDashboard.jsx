@@ -1,174 +1,395 @@
-// src/components/engineer/AnalyticsDashboard.jsx
+// src/components/engineer/EngineerDashboard.jsx
 import React, { useState, useEffect } from 'react';
-import {
-    BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
-    XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
-} from 'recharts';
-import api from '../../api/api';
-import CustomChartBuilder from './CustomChartBuilder';
-import '../../style/Dashboard.css'; // 
+import api from "../../api/api";
+import MapView from '../MapView';
+import ConnectionsPanel from './ConnectionsPanel';
+import AnalyticsDashboard from './AnalyticsDashboard';
+import DataEditor from './DataEditor';
+import ShapefileUploader from './ShapefileUploader';
+import DataSync from './DataSync';
+import FlagManager from './FlagManager';
+import FormList from './FormList';
+import FormBuilder from './FormBuilder';
+import SubmissionsList from './SubmissionsList';
+import PendingEdits from './PendingEdits';
+import HomePanel from './HomePanel';
+import ProfilePanel from './ProfilePanel';
+import SettingsPanel from './SettingsPanel';
 
-export default function AnalyticsDashboard({ onClose }) {
-    
+// Import new containers
+import DrawerDownload from '../../containers/DrawerDownload';
+import DrawerUpload from '../../containers/DrawerUpload';
+import DrawerMap from '../../containers/DrawerMap';
+import DrawerEntry from '../../containers/DrawerEntry';
+import ModalDeleteEntry from '../../containers/ModalDeleteEntry';
+import ModalViewEntry from '../../containers/ModalViewEntry';
+import WaitOverlay from '../../containers/WaitOverlay';
 
-    return (
-        <div className="wd-panel" style={{ width: '90vw', maxWidth: '1200px' }}>
-            <div className="wd-panel-header">
-                <div className="wd-panel-icon">📊</div>
-                <div>
-                    <div className="wd-panel-title">Analytics Dashboard</div>
-                    <div className="wd-panel-sub">Reports, logs, and custom charts</div>
-                </div>
-                <button className="wd-panel-close" onClick={onClose}>×</button>
-            </div>
+export default function EngineerDashboard({ user, onLogout }) {
+  const userId = user?.id;
+  const role = user?.role || 'engineer';
+  const userProfile = user;
 
-            <div className="wd-panel-body">
-                {/* Tab Bar */}
-                <div className="wd-tabs">
-                    <button className={`wd-tab ${activeTab === 'overview' ? 'active' : ''}`} onClick={() => setActiveTab('overview')}>Overview</button>
-                    <button className={`wd-tab ${activeTab === 'joblogs' ? 'active' : ''}`} onClick={() => setActiveTab('joblogs')}>Job Logs</button>
-                    <button className={`wd-tab ${activeTab === 'reports' ? 'active' : ''}`} onClick={() => setActiveTab('reports')}>Periodic Reports</button>
-                    <button className={`wd-tab ${activeTab === 'custom' ? 'active' : ''}`} onClick={() => setActiveTab('custom')}>Custom Charts</button>
-                </div>
+  const [activeTab, setActiveTab] = useState('home');
+  const [selectedFeature, setFeature] = useState(null);
+  const [selectedForm, setSelectedForm] = useState(null);
+  const [manholes, setManholes] = useState([]);
+  const [pipes, setPipelines] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [connectionActive, setConnectionActive] = useState(false);
+  const [pendingEditCount, setPendingEditCount] = useState(0);
 
-                {/* Overview Tab */}
-                {activeTab === 'overview' && (
-                    <>
-                        <div className="wd-stats" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
-                            <div className="wd-stat green"><div className="s-num">{counts.manholes}</div><div className="s-lbl">Manholes</div></div>
-                            <div className="wd-stat lime"><div className="s-num">{counts.pipelines}</div><div className="s-lbl">Pipelines</div></div>
-                            <div className="wd-stat sky"><div className="s-num">{counts.suburbs}</div><div className="s-lbl">Suburbs</div></div>
-                            <div className="wd-stat amber"><div className="s-num">{resolutionTime} hrs</div><div className="s-lbl">Avg Resolution Time</div></div>
-                        </div>
+  // New state for drawers and modals
+  const [drawerOpen, setDrawerOpen] = useState(null); // 'download', 'upload', 'map', 'entry'
+  const [selectedEntry, setSelectedEntry] = useState(null);
+  const [modalDelete, setModalDelete] = useState({ isOpen: false, entryUuid: null, entryTitle: '' });
+  const [modalView, setModalView] = useState({ isOpen: false, headers: [], answers: [], entryTitle: '' });
+  const [isLoading, setIsLoading] = useState(false);
 
-                        <div className="wd-section">Maintenance Requests by Status</div>
-                        <ResponsiveContainer width="100%" height={300}>
-                            <PieChart>
-                                <Pie data={maintenanceStats} dataKey="count" nameKey="status" cx="50%" cy="50%" outerRadius={80} label>
-                                    {maintenanceStats.map((entry, index) => <Cell key={`cell-${index}`} fill={['#0088FE','#00C49F','#FFBB28','#FF8042'][index % 4]} />)}
-                                </Pie>
-                                <Tooltip />
-                            </PieChart>
-                        </ResponsiveContainer>
+  useEffect(() => {
+    checkConnection();
+    fetchPendingCount();
+  }, []);
 
-                        <div className="wd-section">Asset Edits by Status</div>
-                        <ResponsiveContainer width="100%" height={300}>
-                            <PieChart>
-                                <Pie data={assetEditsStats} dataKey="count" nameKey="status" cx="50%" cy="50%" outerRadius={80} label>
-                                    {assetEditsStats.map((entry, index) => <Cell key={`cell-${index}`} fill={['#0088FE','#00C49F','#FFBB28','#FF8042'][index % 4]} />)}
-                                </Pie>
-                                <Tooltip />
-                            </PieChart>
-                        </ResponsiveContainer>
+  useEffect(() => {
+    if (connectionActive) fetchData();
+  }, [connectionActive]);
 
-                        <div className="wd-section">Operator Activity (Last 30 Days)</div>
-                        <ResponsiveContainer width="100%" height={300}>
-                            <LineChart data={operatorActivity}>
-                                <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis dataKey="day" />
-                                <YAxis />
-                                <Tooltip />
-                                <Legend />
-                                <Line type="monotone" dataKey="count" stroke="#8884d8" />
-                            </LineChart>
-                        </ResponsiveContainer>
+  const fetchPendingCount = async () => {
+    try {
+      const res = await api.get('/asset-edits?status=pending');
+      setPendingEditCount(res.data.length ?? 0);
+    } catch {
+      setPendingEditCount(0);
+    }
+  };
 
-                        <div className="wd-section">Flag Hotspots</div>
-                        <table className="wd-table">
-                            <thead><tr><th>Suburb</th><th>Feature ID</th><th>Flag Count</th></tr></thead>
-                            <tbody>
-                                {flagHotspots.map((h, i) => <tr key={i}><td>{h.suburb}</td><td>{h.feature_id}</td><td>{h.flag_count}</td></tr>)}
-                                {flagHotspots.length === 0 && <tr><td colSpan="3">No flags reported</td></tr>}
-                            </tbody>
-                        </table>
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const [manholesRes, pipelinesRes] = await Promise.all([
+        api.get('/manholes'),
+        api.get('/pipelines')
+      ]);
+      setManholes(manholesRes.data || []);
+      setPipelines(pipelinesRes.data || []);
+    } catch (err) {
+      if (err.response?.status === 503) setConnectionActive(false);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-                        <div className="wd-section">Maintenance Records</div>
-                        <div className="wd-filter-bar">
-                            <input type="text" name="status" placeholder="Status" value={filters.status} onChange={handleFilterChange} />
-                            <input type="text" name="feature_type" placeholder="Feature type" value={filters.feature_type} onChange={handleFilterChange} />
-                            <input type="date" name="start_date" value={filters.start_date} onChange={handleFilterChange} />
-                            <input type="date" name="end_date" value={filters.end_date} onChange={handleFilterChange} />
-                            <button className="wd-btn wd-btn-primary" onClick={applyFilters}>Apply Filters</button>
-                        </div>
-                        <div style={{ overflowX: 'auto' }}>
-                            <table className="wd-table">
-                                <thead><tr><th>ID</th><th>Type</th><th>Feature ID</th><th>Maintenance Type</th><th>Status</th><th>Created At</th></tr></thead>
-                                <tbody>
-                                    {maintenanceRecords.map(rec => <tr key={rec.id}><td>{rec.id}</td><td>{rec.feature_type}</td><td>{rec.feature_id}</td><td>{rec.maintenance_type}</td><td>{rec.status}</td><td>{new Date(rec.created_at).toLocaleString()}</td></tr>)}
-                                    {maintenanceRecords.length === 0 && <tr><td colSpan="6">No records found</td></tr>}
-                                </tbody>
-                            </table>
-                        </div>
-                    </>
-                )}
+  const checkConnection = async () => {
+    try {
+      await api.get('/connections/active');
+      setConnectionActive(true);
+    } catch {
+      setConnectionActive(false);
+    }
+  };
 
-                {/* Job Logs Tab */}
-                {activeTab === 'joblogs' && (
-                    <>
-                        <div className="wd-filter-bar">
-                            <input type="date" name="start_date" value={jobLogFilters.start_date} onChange={handleJobLogFilterChange} />
-                            <input type="date" name="end_date" value={jobLogFilters.end_date} onChange={handleJobLogFilterChange} />
-                            <select name="operator_id" value={jobLogFilters.operator_id} onChange={handleJobLogFilterChange}>
-                                <option value="">All Operators</option>
-                                {operators.map(op => <option key={op.id} value={op.id}>{op.name}</option>)}
-                            </select>
-                            <select name="action_type" value={jobLogFilters.action_type} onChange={handleJobLogFilterChange}>
-                                <option value="">All Actions</option>
-                                {actionTypes.map(act => <option key={act} value={act}>{act}</option>)}
-                            </select>
-                            <button className="wd-btn wd-btn-primary" onClick={applyJobLogFilters}>Filter</button>
-                        </div>
-                        <div style={{ overflowX: 'auto' }}>
-                            <table className="wd-table">
-                                <thead><tr><th>Timestamp</th><th>Operator</th><th>Action</th><th>Feature Type</th><th>Feature ID</th><th>Details</th></tr></thead>
-                                <tbody>
-                                    {jobLogs.map(log => <tr key={log.id}>
-                                        <td>{new Date(log.created_at).toLocaleString()}</td>
-                                        <td>{log.operator_name}</td>
-                                        <td>{log.action_type}</td>
-                                        <td>{log.feature_type}</td>
-                                        <td>{log.feature_id}</td>
-                                        <td><pre>{JSON.stringify(log.details, null, 2)}</pre></td>
-                                    </tr>)}
-                                    {jobLogs.length === 0 && <tr><td colSpan="6">No job logs found</td></tr>}
-                                </tbody>
-                            </table>
-                        </div>
-                    </>
-                )}
+  const handleDataRefresh = () => {
+    fetchData();
+    fetchPendingCount();
+  };
 
-                {/* Periodic Reports Tab */}
-                {activeTab === 'reports' && (
-                    <>
-                        <div className="wd-filter-bar">
-                            <button className={`wd-btn ${reportPeriod === 'daily' ? 'active' : ''}`} onClick={() => setReportPeriod('daily')}>Daily</button>
-                            <button className={`wd-btn ${reportPeriod === 'weekly' ? 'active' : ''}`} onClick={() => setReportPeriod('weekly')}>Weekly</button>
-                            <button className={`wd-btn ${reportPeriod === 'monthly' ? 'active' : ''}`} onClick={() => setReportPeriod('monthly')}>Monthly</button>
-                        </div>
-                        <div style={{ overflowX: 'auto' }}>
-                            <table className="wd-table">
-                                <thead><tr><th>Period</th><th>Maintenance Requests</th><th>Asset Edits</th><th>Flags Reported</th></tr></thead>
-                                <tbody>
-                                    {getUniqueReportData().map(row => <tr key={row.period}><td>{row.period}</td><td>{row.maintenance_count || 0}</td><td>{row.asset_edits_count || 0}</td><td>{row.flags_count || 0}</td></tr>)}
-                                    {getUniqueReportData().length === 0 && <tr><td colSpan="4">No data available</td></tr>}
-                                </tbody>
-                            </table>
-                        </div>
-                    </>
-                )}
+  const handleConnectionActivated = () => {
+    checkConnection();
+    fetchData();
+  };
 
-                {/* Custom Charts Tab */}
-                {activeTab === 'custom' && (
-                    <>
-                        <div className="wd-section">Build Your Own Chart</div>
-                        <CustomChartBuilder
-                            data={chartData}
-                            availableFields={chartFields}
-                            onExport={(data) => console.log('Export chart', data)}
-                        />
-                    </>
-                )}
-            </div>
+  // Handlers for drawers and modals
+  const handleDownload = async (format, includeMedia) => {
+    setIsLoading(true);
+    try {
+      // Build download URL with current filters (you need to manage filters state)
+      const params = new URLSearchParams({ format, include_media: includeMedia });
+      // You may also pass date range, etc.
+      const response = await api.get(`/analytics/export?${params.toString()}`, {
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `wastewater_export.${format}`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Download failed', error);
+    } finally {
+      setIsLoading(false);
+      setDrawerOpen(null);
+    }
+  };
+
+  const handleUpload = async (file) => {
+    setIsLoading(true);
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      await api.post('/upload/bulk', formData);
+      handleDataRefresh(); // refresh submissions list
+    } catch (error) {
+      console.error('Upload failed', error);
+    } finally {
+      setIsLoading(false);
+      setDrawerOpen(null);
+    }
+  };
+
+  const handleViewEntry = (headers, answers, entryTitle) => {
+    setModalView({ isOpen: true, headers, answers, entryTitle });
+  };
+
+  const handleDeleteEntry = (entryUuid, entryTitle) => {
+    setModalDelete({ isOpen: true, entryUuid, entryTitle });
+  };
+
+  const confirmDelete = async () => {
+    const { entryUuid } = modalDelete;
+    try {
+      await api.delete(`/submissions/${entryUuid}`);
+      handleDataRefresh();
+      setModalDelete({ isOpen: false, entryUuid: null, entryTitle: '' });
+    } catch (error) {
+      console.error('Delete failed', error);
+    }
+  };
+
+  const handleEditEntry = (entryUuid) => {
+    // Implement edit logic (e.g., open a drawer or navigate)
+    console.log('Edit entry', entryUuid);
+  };
+
+  const renderContent = () => {
+    switch (activeTab) {
+      case 'home':
+        return <HomePanel manholes={manholes} pipes={pipes} onNavigate={setActiveTab} onClose={() => {}} />;
+      case 'connections':
+        return <ConnectionsPanel onClose={() => setActiveTab('home')} onConnectionActivated={handleConnectionActivated} />;
+      case 'analytics':
+        return <AnalyticsDashboard onClose={() => setActiveTab('home')} />;
+      case 'editor':
+        return <DataEditor feature={selectedFeature} onSave={() => { setActiveTab('home'); handleDataRefresh(); }} onCancel={() => setActiveTab('home')} />;
+      case 'uploader':
+        return <ShapefileUploader onUploadComplete={handleDataRefresh} onClose={() => setActiveTab('home')} />;
+      case 'sync':
+        return <DataSync userId={userId} onSyncComplete={handleDataRefresh} onClose={() => setActiveTab('home')} />;
+      case 'flags':
+        return <FlagManager onFlagManaged={handleDataRefresh} onClose={() => setActiveTab('home')} />;
+      case 'forms':
+        return !selectedForm ? (
+          <FormList onSelectForm={setSelectedForm} onClose={() => setActiveTab('home')} onCreateNew={() => setSelectedForm({})} />
+        ) : (
+          <FormBuilder form={selectedForm} onSaved={() => { setSelectedForm(null); handleDataRefresh(); }} onCancel={() => setSelectedForm(null)} />
+        );
+      case 'submissions':
+        return (
+          <SubmissionsList
+            onClose={() => setActiveTab('home')}
+            onRefresh={handleDataRefresh}
+            onViewEntry={handleViewEntry}
+            onDeleteEntry={handleDeleteEntry}
+            onEditEntry={handleEditEntry}
+            onOpenDrawer={setDrawerOpen}
+          />
+        );
+      case 'edits':
+        return <PendingEdits onClose={() => setActiveTab('home')} onEditProcessed={() => { fetchPendingCount(); handleDataRefresh(); }} />;
+      case 'profile':
+        return <ProfilePanel userId={userId} role={role} userProfile={userProfile} onClose={() => setActiveTab('home')} onLogout={onLogout} />;
+      case 'settings':
+        return <SettingsPanel onClose={() => setActiveTab('home')} />;
+      default:
+        return <HomePanel manholes={manholes} pipes={pipes} onNavigate={setActiveTab} onClose={() => {}} />;
+    }
+  };
+
+  // Inline styles (unchanged)
+  const styles = {
+    root: {
+      display: 'flex',
+      flexDirection: 'column',
+      height: '100vh',
+      width: '100vw',
+      overflow: 'hidden',
+      fontFamily: 'system-ui, -apple-system, sans-serif'
+    },
+    topbar: {
+      background: 'white',
+      borderBottom: '1px solid #ddd',
+      padding: '0 1.5rem',
+      height: '60px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+      zIndex: 10
+    },
+    mainLayout: {
+      display: 'flex',
+      flex: 1,
+      overflow: 'hidden'
+    },
+    mapContainer: {
+      flex: 2,
+      position: 'relative',
+      background: '#e9ecef'
+    },
+    panelContainer: {
+      flex: 1,
+      minWidth: '380px',
+      maxWidth: '480px',
+      background: 'white',
+      borderLeft: '1px solid #ddd',
+      display: 'flex',
+      flexDirection: 'column',
+      overflow: 'hidden'
+    },
+    tabBar: {
+      display: 'flex',
+      background: '#f8fafc',
+      borderBottom: '1px solid #ddd',
+      padding: '0.5rem 0.75rem 0',
+      gap: '0.25rem',
+      overflowX: 'auto'
+    },
+    tab: {
+      padding: '0.5rem 1rem',
+      background: 'white',
+      border: '1px solid #ddd',
+      borderBottom: 'none',
+      borderRadius: '8px 8px 0 0',
+      fontSize: '0.85rem',
+      fontWeight: 500,
+      color: '#6c757d',
+      cursor: 'pointer',
+      whiteSpace: 'nowrap',
+      transition: 'all 0.2s'
+    },
+    activeTab: {
+      color: '#2c7da0',
+      borderColor: '#2c7da0',
+      borderBottomColor: 'white',
+      background: 'white',
+      position: 'relative',
+      zIndex: 1
+    },
+    panelContent: {
+      flex: 1,
+      overflowY: 'auto',
+      padding: '1.25rem'
+    },
+    badge: {
+      background: '#e76f51',
+      color: 'white',
+      borderRadius: '12px',
+      padding: '0.1rem 0.4rem',
+      fontSize: '0.7rem',
+      marginLeft: '0.3rem'
+    }
+  };
+
+  return (
+    <div style={styles.root}>
+      {/* TOP BAR (unchanged) */}
+      <header style={styles.topbar}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <span style={{ fontSize: '1.8rem' }}>🪣</span>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: '1.2rem', color: '#2c7da0' }}>WWGIS</div>
+            <div style={{ fontSize: '0.7rem', color: '#6c757d' }}>Engineer Dashboard</div>
+          </div>
         </div>
-    );
+        <div style={{ display: 'flex', gap: '0.75rem' }}>
+          <div style={{ background: '#eef2f5', padding: '0.25rem 0.75rem', borderRadius: '20px', fontSize: '0.8rem' }}>
+            <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#2a9d8f', marginRight: '0.4rem' }}></span>
+            {manholes?.length ?? 0} Manholes
+          </div>
+          <div style={{ background: '#eef2f5', padding: '0.25rem 0.75rem', borderRadius: '20px', fontSize: '0.8rem' }}>
+            <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#a7c957', marginRight: '0.4rem' }}></span>
+            {pipes?.length ?? 0} Pipelines
+          </div>
+          <div style={{ background: '#eef2f5', padding: '0.25rem 0.75rem', borderRadius: '20px', fontSize: '0.8rem' }}>
+            <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: connectionActive ? '#2a9d8f' : '#e76f51', marginRight: '0.4rem' }}></span>
+            {connectionActive ? 'Connected' : 'No DB'}
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <button style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer' }} onClick={() => setActiveTab('profile')}>👤</button>
+          <button style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer' }} onClick={() => setActiveTab('settings')}>⚙️</button>
+          <button style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer' }} onClick={onLogout}>⎋</button>
+          <div style={{ background: '#2c7da0', color: 'white', padding: '0.2rem 0.8rem', borderRadius: '20px', fontSize: '0.8rem' }}>{role}</div>
+        </div>
+      </header>
+
+      {/* MAIN LAYOUT */}
+      <div style={styles.mainLayout}>
+        {/* MAP */}
+        <div style={styles.mapContainer}>
+          <MapView
+            manholes={manholes}
+            pipes={pipes}
+            role={role}
+            userId={userId}
+            onFeatureClick={(f) => { setFeature(f); setActiveTab('editor'); }}
+          />
+        </div>
+
+        {/* RIGHT PANEL WITH TABS */}
+        <div style={styles.panelContainer}>
+          <div style={styles.tabBar}>
+            <button style={{ ...styles.tab, ...(activeTab === 'home' ? styles.activeTab : {}) }} onClick={() => setActiveTab('home')}>🏠 Home</button>
+            <button style={{ ...styles.tab, ...(activeTab === 'connections' ? styles.activeTab : {}) }} onClick={() => setActiveTab('connections')}>🔌 Connections</button>
+            <button style={{ ...styles.tab, ...(activeTab === 'analytics' ? styles.activeTab : {}) }} onClick={() => setActiveTab('analytics')}>📊 Analytics</button>
+            <button style={{ ...styles.tab, ...(activeTab === 'forms' ? styles.activeTab : {}) }} onClick={() => setActiveTab('forms')}>📝 Forms</button>
+            <button style={{ ...styles.tab, ...(activeTab === 'submissions' ? styles.activeTab : {}) }} onClick={() => setActiveTab('submissions')}>📋 Submissions</button>
+            <button style={{ ...styles.tab, ...(activeTab === 'edits' ? styles.activeTab : {}) }} onClick={() => setActiveTab('edits')}>
+              ✏️ Edits {pendingEditCount > 0 && <span style={styles.badge}>{pendingEditCount}</span>}
+            </button>
+            <button style={{ ...styles.tab, ...(activeTab === 'flags' ? styles.activeTab : {}) }} onClick={() => setActiveTab('flags')}>🚩 Flags</button>
+            <button style={{ ...styles.tab, ...(activeTab === 'uploader' ? styles.activeTab : {}) }} onClick={() => setActiveTab('uploader')}>📤 Upload</button>
+            <button style={{ ...styles.tab, ...(activeTab === 'sync' ? styles.activeTab : {}) }} onClick={() => setActiveTab('sync')}>🔄 Sync</button>
+          </div>
+          <div style={styles.panelContent}>
+            {loading && activeTab === 'home' ? <div>Loading data...</div> : renderContent()}
+          </div>
+        </div>
+      </div>
+
+      {/* Drawers and Modals */}
+      {drawerOpen === 'download' && (
+        <DrawerDownload onClose={() => setDrawerOpen(null)} onDownload={handleDownload} />
+      )}
+      {drawerOpen === 'upload' && (
+        <DrawerUpload onClose={() => setDrawerOpen(null)} onUpload={handleUpload} />
+      )}
+      {drawerOpen === 'map' && selectedEntry && (
+        <DrawerMap entries={[selectedEntry]} onClose={() => setDrawerOpen(null)} />
+      )}
+      {drawerOpen === 'entry' && selectedEntry && (
+        <DrawerEntry entry={selectedEntry} onClose={() => setDrawerOpen(null)} />
+      )}
+
+      <ModalDeleteEntry
+        isOpen={modalDelete.isOpen}
+        onClose={() => setModalDelete({ isOpen: false, entryUuid: null, entryTitle: '' })}
+        onConfirm={confirmDelete}
+        entryTitle={modalDelete.entryTitle}
+      />
+
+      <ModalViewEntry
+        isOpen={modalView.isOpen}
+        onClose={() => setModalView({ isOpen: false, headers: [], answers: [], entryTitle: '' })}
+        headers={modalView.headers}
+        answers={modalView.answers}
+        entryTitle={modalView.entryTitle}
+      />
+
+      <WaitOverlay isVisible={isLoading} message="Processing..." />
+    </div>
+  );
 }
