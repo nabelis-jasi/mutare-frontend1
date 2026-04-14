@@ -1,233 +1,232 @@
-// src/components/engineer/FormBuilder.jsx
-import React, { useEffect, useState } from 'react';
-import api from "../../api/api"; // adjust path to your api.js
+import React, { useState, useEffect } from 'react';
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
+import { SortableItem } from './SortableItem'; // we'll create this
+import api from '../../api/api';
 
 const FIELD_TYPES = [
-  { id: 'text',     icon: '🔤', label: 'Text'     },
-  { id: 'number',   icon: '🔢', label: 'Number'   },
-  { id: 'select',   icon: '📋', label: 'Select'   },
-  { id: 'checkbox', icon: '☑️', label: 'Checkbox' },
-  { id: 'location', icon: '📍', label: 'Location' },
-  { id: 'photo',    icon: '📷', label: 'Photo'    },
-  { id: 'textarea', icon: '📝', label: 'Textarea' },
+    { id: 'text', label: 'Text', icon: '📝' },
+    { id: 'number', label: 'Number', icon: '🔢' },
+    { id: 'select', label: 'Select', icon: '📋' },
+    { id: 'checkbox', label: 'Checkbox', icon: '☑️' },
+    { id: 'radio', label: 'Radio', icon: '🔘' },
+    { id: 'textarea', label: 'Textarea', icon: '✏️' },
+    { id: 'date', label: 'Date', icon: '📅' },
+    { id: 'location', label: 'Location', icon: '📍' },
+    { id: 'photo', label: 'Photo', icon: '📷' },
 ];
 
-const BLANK_FIELD = { label: '', field_type: 'text', required: false, options: '' };
+export default function FormBuilder({ formId, onSaved, onCancel }) {
+    const [schema, setSchema] = useState({ fields: [] });
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [selectedField, setSelectedField] = useState(null);
+    const [newFieldType, setNewFieldType] = useState('text');
 
-export default function FormBuilder({ form, onSaved, onCancel }) {
-  const isNew = !form?.id;
+    useEffect(() => {
+        if (formId) fetchSchema();
+        else setSchema({ fields: [] });
+    }, [formId]);
 
-  const [title,       setTitle]       = useState(form?.title       || '');
-  const [description, setDesc]        = useState(form?.description || '');
-  const [fields,      setFields]      = useState([]);
-  const [newField,    setNewField]    = useState({ ...BLANK_FIELD });
-  const [saving,      setSaving]      = useState(false);
-  const [saved,       setSaved]       = useState(false);
-  const [error,       setError]       = useState('');
-  const [userId,      setUserId]      = useState(null);
-
-  // Get current user ID on mount
-  useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const res = await api.get('/me');
-        setUserId(res.data.id);
-      } catch (err) {
-        console.error('Failed to fetch user', err);
-      }
+    const fetchSchema = async () => {
+        const res = await api.get(`/forms/${formId}/schema`);
+        setSchema(res.data);
+        setLoading(false);
     };
-    fetchUser();
-  }, []);
 
-  // Fetch fields if editing an existing form
-  useEffect(() => {
-    if (form?.id) fetchFields();
-    else setFields([]);
-  }, [form]);
+    const saveSchema = async () => {
+        setSaving(true);
+        await api.put(`/forms/${formId}/schema`, { schema });
+        if (onSaved) onSaved();
+        setSaving(false);
+    };
 
-  const fetchFields = async () => {
-    try {
-      const res = await api.get(`/forms/${form.id}/fields`);
-      setFields(res.data || []);
-    } catch (err) {
-      console.error('Error fetching fields', err);
-    }
-  };
+    const addField = () => {
+        const newField = {
+            id: `field_${Date.now()}`,
+            type: newFieldType,
+            label: `New ${FIELD_TYPES.find(f => f.id === newFieldType)?.label} field`,
+            required: false,
+            options: newFieldType === 'select' || newFieldType === 'radio' ? ['Option 1'] : undefined,
+        };
+        setSchema(prev => ({ ...prev, fields: [...prev.fields, newField] }));
+        setSelectedField(newField.id);
+    };
 
-  const addField = () => {
-    if (!newField.label.trim()) { setError('Field label is required.'); return; }
-    setError('');
-    setFields(prev => [...prev, { ...newField, id: `new_${Date.now()}` }]);
-    setNewField({ ...BLANK_FIELD });
-  };
+    const removeField = (id) => {
+        setSchema(prev => ({ ...prev, fields: prev.fields.filter(f => f.id !== id) }));
+        if (selectedField === id) setSelectedField(null);
+    };
 
-  const removeField = (i) => setFields(prev => prev.filter((_, idx) => idx !== i));
+    const updateField = (id, updates) => {
+        setSchema(prev => ({
+            ...prev,
+            fields: prev.fields.map(f => f.id === id ? { ...f, ...updates } : f)
+        }));
+    };
 
-  const moveField = (i, dir) => {
-    const updated = [...fields];
-    const j = i + dir;
-    if (j < 0 || j >= updated.length) return;
-    [updated[i], updated[j]] = [updated[j], updated[i]];
-    setFields(updated);
-  };
+    const onDragEnd = (event) => {
+        const { active, over } = event;
+        if (active.id !== over.id) {
+            const oldIndex = schema.fields.findIndex(f => f.id === active.id);
+            const newIndex = schema.fields.findIndex(f => f.id === over.id);
+            setSchema(prev => ({
+                ...prev,
+                fields: arrayMove(prev.fields, oldIndex, newIndex)
+            }));
+        }
+    };
 
-  const saveForm = async () => {
-    if (!title.trim()) { setError('Form title is required.'); return; }
-    if (fields.length === 0) { setError('Add at least one field.'); return; }
-    setError('');
-    setSaving(true);
-    let formId = form?.id;
+    const sensors = useSensors(useSensor(PointerSensor));
 
-    try {
-      // 1. Create or update the form metadata
-      if (isNew) {
-        const res = await api.post('/forms', { title, description });
-        formId = res.data.id;
-      } else {
-        await api.put(`/forms/${formId}`, { title, description });
-      }
+    if (loading) return <div className="p-4">Loading form builder...</div>;
 
-      // 2. Prepare fields payload (without temporary ids)
-      const fieldsPayload = fields.map(({ id, label, field_type, options, required }) => ({
-        label,
-        field_type,
-        options: options ? options.split(',').map(s => s.trim()).filter(Boolean) : null,
-        required,
-      }));
-
-      // 3. Replace all fields in one request
-      await api.post(`/forms/${formId}/fields`, fieldsPayload);
-
-      setSaved(true);
-      setTimeout(() => { onSaved?.(); }, 900);
-    } catch (err) {
-      setError('Save failed: ' + (err.response?.data?.error || err.message));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const selectedType = FIELD_TYPES.find(t => t.id === newField.field_type);
-
-  return (
-    <div className="wd-panel" style={{ '--panel-icon-bg': 'rgba(143,220,0,0.1)', '--panel-icon-border': 'rgba(143,220,0,0.3)' }}>
-      <div className="wd-panel-header">
-        <div className="wd-panel-icon">📝</div>
-        <div>
-          <div className="wd-panel-title">{isNew ? 'New Form' : 'Edit Form'}</div>
-          <div className="wd-panel-sub">{fields.length} field{fields.length !== 1 ? 's' : ''} · {isNew ? 'Draft' : 'Editing'}</div>
-        </div>
-        <button className="wd-panel-close" onClick={onCancel}>×</button>
-      </div>
-
-      <div className="wd-panel-body">
-        {/* Form metadata */}
-        <div className="wd-section">Form Details</div>
-
-        <div className="wd-field" style={{ marginBottom: 10 }}>
-          <label className="wd-label">Title *</label>
-          <input className="wd-input" placeholder="e.g. Manhole Inspection Form" value={title}
-            onChange={e => setTitle(e.target.value)} />
-        </div>
-
-        <div className="wd-field" style={{ marginBottom: 16 }}>
-          <label className="wd-label">Description (optional)</label>
-          <textarea className="wd-textarea" rows={2}
-            placeholder="Describe what this form is used for…"
-            value={description} onChange={e => setDesc(e.target.value)} />
-        </div>
-
-        {/* Fields list */}
-        <div className="wd-section">
-          Fields
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-dim)', marginLeft: 8 }}>
-            {fields.length} added
-          </span>
-        </div>
-
-        {fields.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '16px 0', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-dim)' }}>
-            No fields yet — add one below
-          </div>
-        ) : (
-          fields.map((f, i) => (
-            <div key={f.id} className="wd-fb-field-row">
-              <span className="fr-drag">⠿</span>
-              <div className="fr-body">
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span className="fr-label">{f.label}</span>
-                  {f.required && <span className="fr-req">Required</span>}
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg w-11/12 max-w-6xl h-5/6 flex flex-col shadow-xl">
+                {/* Header */}
+                <div className="flex justify-between items-center p-4 border-b">
+                    <h2 className="text-xl font-bold">Form Builder</h2>
+                    <button onClick={onCancel} className="text-gray-500 hover:text-gray-700">✕</button>
                 </div>
-                <div className="fr-type">
-                  {FIELD_TYPES.find(t => t.id === f.field_type)?.icon} {f.field_type}
-                  {f.options && ` · ${f.options}`}
+
+                <div className="flex flex-1 overflow-hidden">
+                    {/* Left: Field list (draggable) */}
+                    <div className="w-1/3 border-r p-4 overflow-y-auto">
+                        <h3 className="font-semibold mb-2">Field Types</h3>
+                        <div className="space-y-2 mb-4">
+                            {FIELD_TYPES.map(type => (
+                                <button
+                                    key={type.id}
+                                    onClick={() => setNewFieldType(type.id)}
+                                    className={`w-full text-left px-3 py-2 rounded flex items-center gap-2 ${newFieldType === type.id ? 'bg-blue-100 border-blue-500' : 'bg-gray-50 hover:bg-gray-100'}`}
+                                >
+                                    <span>{type.icon}</span> {type.label}
+                                </button>
+                            ))}
+                        </div>
+                        <button
+                            onClick={addField}
+                            className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
+                        >
+                            + Add Field
+                        </button>
+                    </div>
+
+                    {/* Center: Form fields (sortable) */}
+                    <div className="w-1/2 border-r p-4 overflow-y-auto">
+                        <h3 className="font-semibold mb-2">Form Fields</h3>
+                        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+                            <SortableContext items={schema.fields.map(f => f.id)} strategy={verticalListSortingStrategy}>
+                                <div className="space-y-2">
+                                    {schema.fields.map(field => (
+                                        <SortableItem key={field.id} id={field.id}>
+                                            <div
+                                                className={`border rounded p-3 cursor-move hover:shadow-md transition ${selectedField === field.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200'}`}
+                                                onClick={() => setSelectedField(field.id)}
+                                            >
+                                                <div className="flex justify-between items-center">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-gray-400">⋮⋮</span>
+                                                        <span className="font-medium">{field.label}</span>
+                                                        <span className="text-xs text-gray-500">({FIELD_TYPES.find(t => t.id === field.type)?.label})</span>
+                                                        {field.required && <span className="text-red-500 text-xs">*</span>}
+                                                    </div>
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); removeField(field.id); }}
+                                                        className="text-red-500 hover:text-red-700"
+                                                    >🗑️</button>
+                                                </div>
+                                            </div>
+                                        </SortableItem>
+                                    ))}
+                                </div>
+                            </SortableContext>
+                        </DndContext>
+                        {schema.fields.length === 0 && <div className="text-gray-400 text-center py-8">No fields yet. Add some from the left panel.</div>}
+                    </div>
+
+                    {/* Right: Field properties */}
+                    <div className="w-1/3 p-4 overflow-y-auto">
+                        <h3 className="font-semibold mb-2">Properties</h3>
+                        {selectedField ? (
+                            <>
+                                {(() => {
+                                    const field = schema.fields.find(f => f.id === selectedField);
+                                    if (!field) return null;
+                                    return (
+                                        <div className="space-y-3">
+                                            <div>
+                                                <label className="block text-sm font-medium">Label</label>
+                                                <input
+                                                    type="text"
+                                                    value={field.label}
+                                                    onChange={e => updateField(field.id, { label: e.target.value })}
+                                                    className="w-full border rounded px-2 py-1"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium">Required</label>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={field.required}
+                                                    onChange={e => updateField(field.id, { required: e.target.checked })}
+                                                />
+                                            </div>
+                                            {(field.type === 'select' || field.type === 'radio') && (
+                                                <div>
+                                                    <label className="block text-sm font-medium">Options</label>
+                                                    {field.options?.map((opt, idx) => (
+                                                        <div key={idx} className="flex gap-1 mb-1">
+                                                            <input
+                                                                type="text"
+                                                                value={opt}
+                                                                onChange={e => {
+                                                                    const newOpts = [...field.options];
+                                                                    newOpts[idx] = e.target.value;
+                                                                    updateField(field.id, { options: newOpts });
+                                                                }}
+                                                                className="flex-1 border rounded px-2 py-1"
+                                                            />
+                                                            <button
+                                                                onClick={() => {
+                                                                    const newOpts = field.options.filter((_, i) => i !== idx);
+                                                                    updateField(field.id, { options: newOpts });
+                                                                }}
+                                                                className="text-red-500"
+                                                            >✕</button>
+                                                        </div>
+                                                    ))}
+                                                    <button
+                                                        onClick={() => updateField(field.id, { options: [...(field.options || []), 'New Option'] })}
+                                                        className="text-blue-600 text-sm"
+                                                    >+ Add option</button>
+                                                </div>
+                                            )}
+                                            {field.type === 'location' && (
+                                                <div className="text-sm text-gray-500">Location picker will be added on map.</div>
+                                            )}
+                                            {field.type === 'photo' && (
+                                                <div className="text-sm text-gray-500">Photo capture will be integrated.</div>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
+                            </>
+                        ) : (
+                            <div className="text-gray-400 text-center py-8">Select a field to edit its properties</div>
+                        )}
+                    </div>
                 </div>
-              </div>
-              <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                <button onClick={() => moveField(i, -1)} disabled={i === 0}
-                  style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', fontSize: 12, padding: '0 2px' }}>↑</button>
-                <button onClick={() => moveField(i, 1)} disabled={i === fields.length - 1}
-                  style={{ background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', fontSize: 12, padding: '0 2px' }}>↓</button>
-                <button className="fr-del" onClick={() => removeField(i)}>×</button>
-              </div>
+
+                {/* Footer */}
+                <div className="border-t p-4 flex justify-end gap-2">
+                    <button onClick={onCancel} className="px-4 py-2 border rounded hover:bg-gray-100">Cancel</button>
+                    <button onClick={saveSchema} disabled={saving} className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700">
+                        {saving ? 'Saving...' : 'Save Form'}
+                    </button>
+                </div>
             </div>
-          ))
-        )}
-
-        {/* Add field */}
-        <div className="wd-section" style={{ marginTop: 18 }}>Add Field</div>
-
-        {/* Field type chips */}
-        <div className="wd-fb-type-chips">
-          {FIELD_TYPES.map(t => (
-            <div key={t.id}
-              className={`wd-fb-type-chip${newField.field_type === t.id ? ' active' : ''}`}
-              onClick={() => setNewField(f => ({ ...f, field_type: t.id }))}
-            >
-              {t.icon} {t.label}
-            </div>
-          ))}
         </div>
-
-        <div className="wd-fb-add-row">
-          <input
-            className="wd-input"
-            placeholder={`${selectedType?.label || 'Text'} field label…`}
-            value={newField.label}
-            onChange={e => setNewField(f => ({ ...f, label: e.target.value }))}
-            onKeyDown={e => e.key === 'Enter' && addField()}
-          />
-        </div>
-
-        {newField.field_type === 'select' && (
-          <div className="wd-field" style={{ marginBottom: 8 }}>
-            <label className="wd-label">Options (comma separated)</label>
-            <input className="wd-input" placeholder="e.g. Good, Fair, Poor, Blocked"
-              value={newField.options} onChange={e => setNewField(f => ({ ...f, options: e.target.value }))} />
-          </div>
-        )}
-
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-          <label className="wd-fb-check-row">
-            <input type="checkbox" checked={newField.required}
-              onChange={e => setNewField(f => ({ ...f, required: e.target.checked }))} />
-            <span className="wd-fb-check-label">Required field</span>
-          </label>
-          <button className="wd-btn wd-btn-ghost" style={{ padding: '6px 14px', fontSize: 11 }} onClick={addField}>
-            + Add Field
-          </button>
-        </div>
-
-        {error && <div className="wd-status err">{error}</div>}
-        {saved && <div className="wd-status ok">✓ Form saved successfully</div>}
-
-        <div className="wd-btn-row" style={{ marginTop: 16 }}>
-          <button className="wd-btn wd-btn-ghost" onClick={onCancel}>Cancel</button>
-          <button className="wd-btn wd-btn-lime" onClick={saveForm} disabled={saving || saved}>
-            {saving ? '⏳ Saving…' : saved ? '✓ Saved' : isNew ? '💾 Create Form' : '💾 Save Changes'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+    );
 }
