@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 import api from '../../api/api';
 import CustomChartBuilder from './CustomChartBuilder';
-import '../style/Dashboard.css'; // 
+import '../../style/Dashboard.css'; // 
 
 export default function AnalyticsDashboard({ onClose }) {
     
