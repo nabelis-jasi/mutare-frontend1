@@ -229,7 +229,9 @@ export default function AnalyticsDashboard({ onClose }) {
                 <ResponsiveContainer width="100%" height={300}>
                   <PieChart>
                     <Pie data={maintenanceStats} dataKey="count" nameKey="status" cx="50%" cy="50%" outerRadius={80} label>
-                      {maintenanceStats.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
+                      {maintenanceStats.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
                     </Pie>
                     <Tooltip />
                   </PieChart>
@@ -240,7 +242,9 @@ export default function AnalyticsDashboard({ onClose }) {
                 <ResponsiveContainer width="100%" height={300}>
                   <PieChart>
                     <Pie data={assetEditsStats} dataKey="count" nameKey="status" cx="50%" cy="50%" outerRadius={80} label>
-                      {assetEditsStats.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
+                      {assetEditsStats.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
                     </Pie>
                     <Tooltip />
                   </PieChart>
@@ -298,7 +302,11 @@ export default function AnalyticsDashboard({ onClose }) {
                       <td style={styles.tableCell}>{new Date(rec.created_at).toLocaleString()}</td>
                     </tr>
                   ))}
-                  {maintenanceRecords.length === 0 && <tr><td colSpan="6" style={styles.tableCell}>No records found</td></tr>}
+                  {maintenanceRecords.length === 0 && (
+                    <tr>
+                      <td colSpan="6" style={styles.tableCell}>No records found</td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -311,13 +319,25 @@ export default function AnalyticsDashboard({ onClose }) {
             <h3>Flag Hotspots</h3>
             <table style={styles.dataTable}>
               <thead>
-                <tr><th style={styles.tableHeader}>Suburb</th><th style={styles.tableHeader}>Feature ID</th><th style={styles.tableHeader}>Flag Count</th></tr>
+                <tr>
+                  <th style={styles.tableHeader}>Suburb</th>
+                  <th style={styles.tableHeader}>Feature ID</th>
+                  <th style={styles.tableHeader}>Flag Count</th>
+                </tr>
               </thead>
               <tbody>
                 {flagHotspots.map((h, i) => (
-                  <tr key={i}><td style={styles.tableCell}>{h.suburb}</td><td style={styles.tableCell}>{h.feature_id}</td><td style={styles.tableCell}>{h.flag_count}<\/td></tr>
+                  <tr key={i}>
+                    <td style={styles.tableCell}>{h.suburb}</td>
+                    <td style={styles.tableCell}>{h.feature_id}</td>
+                    <td style={styles.tableCell}>{h.flag_count}</td>
+                  </tr>
                 ))}
-                {flagHotspots.length === 0 && <tr><td colSpan="3" style={styles.tableCell}>No flags reported</td></tr>}
+                {flagHotspots.length === 0 && (
+                  <tr>
+                    <td colSpan="3" style={styles.tableCell}>No flags reported</td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -341,14 +361,18 @@ export default function AnalyticsDashboard({ onClose }) {
                 <tbody>
                   {operatorActivity.map((log, idx) => (
                     <tr key={idx}>
-                      <td style={styles.tableCell}>{log.day || '—'}<\/td>
-                      <td style={styles.tableCell}>{log.operator_name || '—'}<\/td>
-                      <td style={styles.tableCell}>{log.action_type || '—'}<\/td>
-                      <td style={styles.tableCell}>{log.feature_type || '—'}<\/td>
-                      <td style={styles.tableCell}>{log.feature_id || '—'}<\/td>
+                      <td style={styles.tableCell}>{log.day || '—'}</td>
+                      <td style={styles.tableCell}>{log.operator_name || '—'}</td>
+                      <td style={styles.tableCell}>{log.action_type || '—'}</td>
+                      <td style={styles.tableCell}>{log.feature_type || '—'}</td>
+                      <td style={styles.tableCell}>{log.feature_id || '—'}</td>
                     </tr>
                   ))}
-                  {operatorActivity.length === 0 && <tr><td colSpan="5" style={styles.tableCell}>No activity logs found</td></tr>}
+                  {operatorActivity.length === 0 && (
+                    <tr>
+                      <td colSpan="5" style={styles.tableCell}>No activity logs found</td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -367,18 +391,27 @@ export default function AnalyticsDashboard({ onClose }) {
             <div style={{ overflowX: 'auto' }}>
               <table style={styles.dataTable}>
                 <thead>
-                  <tr><th style={styles.tableHeader}>Period</th><th style={styles.tableHeader}>Maintenance Requests</th><th style={styles.tableHeader}>Asset Edits</th><th style={styles.tableHeader}>Flags Reported</th></tr>
+                  <tr>
+                    <th style={styles.tableHeader}>Period</th>
+                    <th style={styles.tableHeader}>Maintenance Requests</th>
+                    <th style={styles.tableHeader}>Asset Edits</th>
+                    <th style={styles.tableHeader}>Flags Reported</th>
+                  </tr>
                 </thead>
                 <tbody>
                   {getReportData().map(row => (
                     <tr key={row.period}>
-                      <td style={styles.tableCell}>{row.period}<\/td>
-                      <td style={styles.tableCell}>{row.maintenance_count || 0}<\/td>
-                      <td style={styles.tableCell}>{row.asset_edits_count || 0}<\/td>
-                      <td style={styles.tableCell}>{row.flags_count || 0}<\/td>
+                      <td style={styles.tableCell}>{row.period}</td>
+                      <td style={styles.tableCell}>{row.maintenance_count || 0}</td>
+                      <td style={styles.tableCell}>{row.asset_edits_count || 0}</td>
+                      <td style={styles.tableCell}>{row.flags_count || 0}</td>
                     </tr>
                   ))}
-                  {getReportData().length === 0 && <tr><td colSpan="4" style={styles.tableCell}>No data available</td></tr>}
+                  {getReportData().length === 0 && (
+                    <tr>
+                      <td colSpan="4" style={styles.tableCell}>No data available</td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
