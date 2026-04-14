@@ -2,24 +2,18 @@
 import React, { useState, useEffect } from "react";
 import api from "./api/api";
 import Splash from "./components/Splash";
-import RoleSelection from "./components/RoleSelection";
 import EngineerDashboard from "./components/engineer/EngineerDashboard";
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
-  const [role, setRole] = useState(null);
   const [loading, setLoading] = useState(true);
   const [userId] = useState("demo-user-123");
+  const [role] = useState("engineer");
 
   const [manholes, setManholes] = useState([]);
   const [pipes, setPipes] = useState([]);
 
   const handleSplashComplete = () => setShowSplash(false);
-
-  const handleRoleSelect = (selectedRole) => {
-    setRole(selectedRole);
-    fetchData();
-  };
 
   const fetchData = async () => {
     setLoading(true);
@@ -64,29 +58,13 @@ export default function App() {
     localStorage.removeItem("user");
   }, []);
 
+  // Fetch data on mount (no role selection)
+  useEffect(() => {
+    fetchData();
+  }, []);
+
   if (showSplash) {
     return <Splash onComplete={handleSplashComplete} />;
-  }
-
-  if (!role) {
-    return <RoleSelection onSelectRole={handleRoleSelect} />;
-  }
-
-  // Only engineer role is supported now
-  if (role !== "engineer") {
-    return (
-      <div style={{
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        height: "100vh",
-        flexDirection: "column",
-        gap: "1rem"
-      }}>
-        <p>Only engineer dashboard is available in this version.</p>
-        <button onClick={() => setRole(null)}>Go back</button>
-      </div>
-    );
   }
 
   if (loading) {
