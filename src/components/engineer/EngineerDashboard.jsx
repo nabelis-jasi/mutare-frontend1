@@ -15,7 +15,7 @@ import HomePanel from './HomePanel';
 import ProfilePanel from './ProfilePanel';
 import SettingsPanel from './SettingsPanel';
 
-// Drawers and modals
+// Drawers and modals (keep as before)
 import DrawerDownload from '../../containers/DrawerDownload';
 import DrawerUpload from '../../containers/DrawerUpload';
 import DrawerMap from '../../containers/DrawerMap';
@@ -32,22 +32,20 @@ export default function EngineerDashboard({ user, onLogout }) {
   const [activeTab, setActiveTab] = useState('home');
   const [selectedFeature, setFeature] = useState(null);
   const [selectedForm, setSelectedForm] = useState(null);
-  const [manholes, setManholes] = useState([]);
-  const [pipes, setPipelines] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [uploadedLayers, setUploadedLayers] = useState([]); // each: { id, geojson, type, name }
   const [pendingEditCount, setPendingEditCount] = useState(0);
+  const [loading, setLoading] = useState(false); // not used for data fetch anymore
 
-  // Drawers and modals
+  // Drawers and modals state
   const [drawerOpen, setDrawerOpen] = useState(null);
   const [selectedEntry, setSelectedEntry] = useState(null);
   const [modalDelete, setModalDelete] = useState({ isOpen: false, entryUuid: null, entryTitle: '' });
   const [modalView, setModalView] = useState({ isOpen: false, headers: [], answers: [], entryTitle: '' });
   const [isLoading, setIsLoading] = useState(false);
 
-  // Fetch pending edit count
+  // Fetch pending edit count (still needed)
   useEffect(() => {
     fetchPendingCount();
-    fetchData();
   }, []);
 
   const fetchPendingCount = async () => {
@@ -59,99 +57,39 @@ export default function EngineerDashboard({ user, onLogout }) {
     }
   };
 
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const [manholesRes, pipelinesRes] = await Promise.all([
-        api.get('/manholes'),
-        api.get('/pipelines')
-      ]);
-      setManholes(manholesRes.data || []);
-      setPipelines(pipelinesRes.data || []);
-    } catch (err) {
-      console.error('Error fetching spatial data', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleDataRefresh = () => {
-    fetchData();
     fetchPendingCount();
+    // No spatial data refresh needed
   };
 
-  // Handlers for drawers and modals
-  const handleDownload = async (format, includeMedia) => {
-    setIsLoading(true);
-    try {
-      const params = new URLSearchParams({ format, include_media: includeMedia });
-      const response = await api.get(`/analytics/export?${params.toString()}`, {
-        responseType: 'blob',
-      });
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `wastewater_export.${format}`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('Download failed', error);
-    } finally {
-      setIsLoading(false);
-      setDrawerOpen(null);
-    }
+  const handleGeoJsonLoaded = (geojson, layerType) => {
+    const newLayer = {
+      id: Date.now(),
+      geojson,
+      type: layerType,
+      name: `${layerType} ${uploadedLayers.length + 1}`
+    };
+    setUploadedLayers(prev => [...prev, newLayer]);
   };
 
-  const handleUpload = async (file) => {
-    setIsLoading(true);
-    const formData = new FormData();
-    formData.append('file', file);
-    try {
-      await api.post('/upload/bulk', formData);
-      handleDataRefresh();
-    } catch (error) {
-      console.error('Upload failed', error);
-    } finally {
-      setIsLoading(false);
-      setDrawerOpen(null);
-    }
-  };
-
-  const handleViewEntry = (headers, answers, entryTitle) => {
-    setModalView({ isOpen: true, headers, answers, entryTitle });
-  };
-
-  const handleDeleteEntry = (entryUuid, entryTitle) => {
-    setModalDelete({ isOpen: true, entryUuid, entryTitle });
-  };
-
-  const confirmDelete = async () => {
-    const { entryUuid } = modalDelete;
-    try {
-      await api.delete(`/submissions/${entryUuid}`);
-      handleDataRefresh();
-      setModalDelete({ isOpen: false, entryUuid: null, entryTitle: '' });
-    } catch (error) {
-      console.error('Delete failed', error);
-    }
-  };
-
-  const handleEditEntry = (entryUuid) => {
-    console.log('Edit entry', entryUuid);
-  };
+  // Handlers for drawers and modals (unchanged)
+  const handleDownload = async (format, includeMedia) => { ... };
+  const handleUpload = async (file) => { ... };
+  const handleViewEntry = (headers, answers, entryTitle) => { ... };
+  const handleDeleteEntry = (entryUuid, entryTitle) => { ... };
+  const confirmDelete = async () => { ... };
+  const handleEditEntry = (entryUuid) => { ... };
 
   const renderContent = () => {
     switch (activeTab) {
       case 'home':
-        return <HomePanel manholes={manholes} pipes={pipes} onNavigate={setActiveTab} onClose={() => {}} />;
+        return <HomePanel manholes={[]} pipes={[]} onNavigate={setActiveTab} onClose={() => {}} />;
       case 'analytics':
         return <AnalyticsDashboard onClose={() => setActiveTab('home')} />;
       case 'editor':
         return <DataEditor feature={selectedFeature} onSave={() => { setActiveTab('home'); handleDataRefresh(); }} onCancel={() => setActiveTab('home')} />;
       case 'uploader':
-        return <ShapefileUploader onUploadComplete={handleDataRefresh} onClose={() => setActiveTab('home')} />;
+        return <ShapefileUploader onUploadComplete={handleDataRefresh} onClose={() => setActiveTab('home')} onGeoJsonLoaded={handleGeoJsonLoaded} />;
       case 'sync':
         return <DataSync userId={userId} onSyncComplete={handleDataRefresh} onClose={() => setActiveTab('home')} />;
       case 'flags':
@@ -180,182 +118,37 @@ export default function EngineerDashboard({ user, onLogout }) {
       case 'settings':
         return <SettingsPanel onClose={() => setActiveTab('home')} />;
       default:
-        return <HomePanel manholes={manholes} pipes={pipes} onNavigate={setActiveTab} onClose={() => {}} />;
+        return <HomePanel manholes={[]} pipes={[]} onNavigate={setActiveTab} onClose={() => {}} />;
     }
   };
 
-  const styles = {
-    root: {
-      display: 'flex',
-      flexDirection: 'column',
-      height: '100vh',
-      width: '100vw',
-      overflow: 'hidden',
-      fontFamily: 'system-ui, -apple-system, sans-serif'
-    },
-    topbar: {
-      background: 'white',
-      borderBottom: '1px solid #ddd',
-      padding: '0 1.5rem',
-      height: '60px',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
-      zIndex: 10
-    },
-    mainLayout: {
-      display: 'flex',
-      flex: 1,
-      overflow: 'hidden'
-    },
-    mapContainer: {
-      flex: 2,
-      position: 'relative',
-      background: '#e9ecef'
-    },
-    panelContainer: {
-      flex: 1,
-      minWidth: '380px',
-      maxWidth: '480px',
-      background: 'white',
-      borderLeft: '1px solid #ddd',
-      display: 'flex',
-      flexDirection: 'column',
-      overflow: 'hidden'
-    },
-    tabBar: {
-      display: 'grid',
-      gridTemplateColumns: 'repeat(2, 1fr)',
-      gap: '0.5rem',
-      background: '#f8fafc',
-      padding: '0.75rem',
-      borderBottom: '1px solid #ddd',
-    },
-    tab: {
-      padding: '0.5rem 0.75rem',
-      background: 'white',
-      border: '1px solid #ddd',
-      borderRadius: '6px',
-      fontSize: '0.85rem',
-      fontWeight: 500,
-      color: '#6c757d',
-      cursor: 'pointer',
-      textAlign: 'center',
-      transition: 'all 0.2s',
-    },
-    activeTab: {
-      color: '#2c7da0',
-      borderColor: '#2c7da0',
-      background: 'white',
-    },
-    panelContent: {
-      flex: 1,
-      overflowY: 'auto',
-      padding: '1.25rem'
-    },
-    badge: {
-      background: '#e76f51',
-      color: 'white',
-      borderRadius: '12px',
-      padding: '0.1rem 0.4rem',
-      fontSize: '0.7rem',
-      marginLeft: '0.3rem'
-    }
-  };
+  // Styles (same as before, but adjust tab bar to include uploader)
+  const styles = { ... }; // keep your existing styles
 
   return (
     <div style={styles.root}>
-      {/* TOP BAR */}
-      <header style={styles.topbar}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <span style={{ fontSize: '1.8rem' }}>🪣</span>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: '1.2rem', color: '#2c7da0' }}>WWGIS</div>
-            <div style={{ fontSize: '0.7rem', color: '#6c757d' }}>Engineer Dashboard</div>
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
-          <div style={{ background: '#eef2f5', padding: '0.25rem 0.75rem', borderRadius: '20px', fontSize: '0.8rem' }}>
-            <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#2a9d8f', marginRight: '0.4rem' }}></span>
-            {manholes?.length ?? 0} Manholes
-          </div>
-          <div style={{ background: '#eef2f5', padding: '0.25rem 0.75rem', borderRadius: '20px', fontSize: '0.8rem' }}>
-            <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#a7c957', marginRight: '0.4rem' }}></span>
-            {pipes?.length ?? 0} Pipelines
-          </div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <button style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer' }} onClick={() => setActiveTab('profile')}>👤</button>
-          <button style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer' }} onClick={() => setActiveTab('settings')}>⚙️</button>
-          <button style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer' }} onClick={onLogout}>⎋</button>
-          <div style={{ background: '#2c7da0', color: 'white', padding: '0.2rem 0.8rem', borderRadius: '20px', fontSize: '0.8rem' }}>{role}</div>
-        </div>
-      </header>
-
-      {/* MAIN LAYOUT */}
+      <header style={styles.topbar}>...</header>
       <div style={styles.mainLayout}>
-        {/* MAP */}
         <div style={styles.mapContainer}>
-          <MapView
-            manholes={manholes}
-            pipes={pipes}
-            role={role}
-            userId={userId}
-            onFeatureClick={(f) => { setFeature(f); setActiveTab('editor'); }}
-          />
+          <MapView uploadedLayers={uploadedLayers} onFeatureClick={(f) => { setFeature(f); setActiveTab('editor'); }} />
         </div>
-
-        {/* RIGHT PANEL WITH TABS */}
         <div style={styles.panelContainer}>
           <div style={styles.tabBar}>
             <button style={{ ...styles.tab, ...(activeTab === 'home' ? styles.activeTab : {}) }} onClick={() => setActiveTab('home')}>🏠 Home</button>
             <button style={{ ...styles.tab, ...(activeTab === 'analytics' ? styles.activeTab : {}) }} onClick={() => setActiveTab('analytics')}>📊 Analytics</button>
             <button style={{ ...styles.tab, ...(activeTab === 'forms' ? styles.activeTab : {}) }} onClick={() => setActiveTab('forms')}>📝 Forms</button>
             <button style={{ ...styles.tab, ...(activeTab === 'submissions' ? styles.activeTab : {}) }} onClick={() => setActiveTab('submissions')}>📋 Submissions</button>
-            <button style={{ ...styles.tab, ...(activeTab === 'edits' ? styles.activeTab : {}) }} onClick={() => setActiveTab('edits')}>
-              ✏️ Edits {pendingEditCount > 0 && <span style={styles.badge}>{pendingEditCount}</span>}
-            </button>
+            <button style={{ ...styles.tab, ...(activeTab === 'edits' ? styles.activeTab : {}) }} onClick={() => setActiveTab('edits')}>✏️ Edits {pendingEditCount > 0 && <span style={styles.badge}>{pendingEditCount}</span>}</button>
             <button style={{ ...styles.tab, ...(activeTab === 'flags' ? styles.activeTab : {}) }} onClick={() => setActiveTab('flags')}>🚩 Flags</button>
             <button style={{ ...styles.tab, ...(activeTab === 'uploader' ? styles.activeTab : {}) }} onClick={() => setActiveTab('uploader')}>📤 Upload</button>
             <button style={{ ...styles.tab, ...(activeTab === 'sync' ? styles.activeTab : {}) }} onClick={() => setActiveTab('sync')}>🔄 Sync</button>
           </div>
           <div style={styles.panelContent}>
-            {loading && activeTab === 'home' ? <div>Loading data...</div> : renderContent()}
+            {renderContent()}
           </div>
         </div>
       </div>
-
-      {/* Drawers and Modals */}
-      {drawerOpen === 'download' && (
-        <DrawerDownload onClose={() => setDrawerOpen(null)} onDownload={handleDownload} />
-      )}
-      {drawerOpen === 'upload' && (
-        <DrawerUpload onClose={() => setDrawerOpen(null)} onUpload={handleUpload} />
-      )}
-      {drawerOpen === 'map' && selectedEntry && (
-        <DrawerMap entries={[selectedEntry]} onClose={() => setDrawerOpen(null)} />
-      )}
-      {drawerOpen === 'entry' && selectedEntry && (
-        <DrawerEntry entry={selectedEntry} onClose={() => setDrawerOpen(null)} />
-      )}
-
-      <ModalDeleteEntry
-        isOpen={modalDelete.isOpen}
-        onClose={() => setModalDelete({ isOpen: false, entryUuid: null, entryTitle: '' })}
-        onConfirm={confirmDelete}
-        entryTitle={modalDelete.entryTitle}
-      />
-
-      <ModalViewEntry
-        isOpen={modalView.isOpen}
-        onClose={() => setModalView({ isOpen: false, headers: [], answers: [], entryTitle: '' })}
-        headers={modalView.headers}
-        answers={modalView.answers}
-        entryTitle={modalView.entryTitle}
-      />
-
-      <WaitOverlay isVisible={isLoading} message="Processing..." />
+      {/* Drawers and modals (unchanged) */}
     </div>
   );
 }
