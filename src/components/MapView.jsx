@@ -1,9 +1,9 @@
+// src/components/MapView.jsx
 import React, { useState, useRef, useEffect } from "react";
 import { MapContainer, TileLayer, GeoJSON, useMap, useMapEvents } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
-// This import is enough; do not define HeatmapLayer again below!
-import HeatmapLayer from "./HeatmapLayer"; 
+import HeatmapLayer from "./HeatmapLayer"; // Import the separate component
 
 // Fix default marker icons
 delete L.Icon.Default.prototype._getIconUrl;
@@ -127,3 +127,186 @@ function MapBootstrap({ onMapReady, setCoords, pickMode, onMapClick }) {
 
   useEffect(() => {
     map.getContainer().style.cursor = pickMode ? "crosshair" : "";
+  }, [map, pickMode]);
+
+  return null;
+}
+
+// Zoom control
+function ZoomReposition() {
+  const map = useMap();
+  useEffect(() => {
+    map.zoomControl?.remove();
+    L.control.zoom({ position: "bottomright" }).addTo(map);
+  }, [map]);
+  return null;
+}
+
+// Tile selector
+function TileSelector({ activeTiles, setActiveTiles }) {
+  const [expanded, setExpanded] = useState(false);
+  const toggleTile = (id) =>
+    setActiveTiles((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: 12,
+        right: 12,
+        zIndex: 1000,
+        background: "rgba(7,20,7,0.88)",
+        borderRadius: 8,
+        padding: 6,
+      }}
+    >
+      <button
+        onClick={() => setExpanded(!expanded)}
+        style={{
+          cursor: "pointer",
+          fontWeight: 700,
+          fontSize: 12,
+          color: "#8fdc00",
+          background: "transparent",
+          border: "1px solid rgba(74,173,74,0.3)",
+          borderRadius: 6,
+          padding: "4px 6px",
+        }}
+      >
+        🌐 Maps {expanded ? "▲" : "▼"}
+      </button>
+      {expanded &&
+        Object.values(TILES).map((t) => (
+          <button
+            key={t.id}
+            onClick={() => toggleTile(t.id)}
+            style={{
+              cursor: "pointer",
+              fontSize: 11,
+              textAlign: "left",
+              padding: "4px 6px",
+              borderRadius: 6,
+              background: activeTiles.includes(t.id) ? "#4aad4a" : "transparent",
+              color: activeTiles.includes(t.id) ? "#011001" : "#7ab87a",
+              border: "none",
+            }}
+          >
+            {t.icon} {t.label}
+          </button>
+        ))}
+    </div>
+  );
+}
+
+// Main MapView component
+export default function MapView({ 
+  uploadedLayers = [], 
+  onFeatureClick, 
+  heatmapPoints = [], 
+  onMapReady 
+}) {
+  const [coords, setCoords] = useState("");
+  const [activeTiles, setActiveTiles] = useState(["osm"]);
+  const [showLegend, setShowLegend] = useState(true);
+
+  const glass = {
+    background: "rgba(7,20,7,0.88)",
+    backdropFilter: "blur(12px)",
+    WebkitBackdropFilter: "blur(12px)",
+    border: "1px solid rgba(45,138,45,0.25)",
+    borderRadius: 10,
+    color: "#e8f5e8",
+    fontFamily: "'Barlow',sans-serif",
+  };
+
+  return (
+    <div style={{ position: "relative", width: "100%", height: "100%", border: "2px solid black", borderRadius: "4px", overflow: "hidden" }}>
+      <MapContainer
+        center={[-18.97, 32.67]}
+        zoom={13}
+        style={{ width: "100%", height: "100%" }}
+        zoomControl={false}
+        scrollWheelZoom
+        whenReady={({ target }) => onMapReady?.(target)}
+      >
+        <ZoomReposition />
+        <MapBootstrap onMapReady={onMapReady} setCoords={setCoords} pickMode={false} onMapClick={() => {}} />
+        <TileManager activeTiles={activeTiles} />
+
+        {uploadedLayers.map((layer) => (
+          <GeoJSON
+            key={layer.id}
+            data={layer.geojson}
+            pointToLayer={(feature, latlng) => pointToLayer(feature, latlng, layer.type)}
+            style={(feature) => styleForFeature(feature, layer.type)}
+            onEachFeature={(feature, layerObj) => onEachFeature(feature, layerObj, layer.type, onFeatureClick)}
+          />
+        ))}
+
+        {heatmapPoints.length > 0 && <HeatmapLayer points={heatmapPoints} />}
+      </MapContainer>
+
+      <TileSelector activeTiles={activeTiles} setActiveTiles={setActiveTiles} />
+
+      {showLegend && (
+        <div
+          style={{
+            ...glass,
+            position: "absolute",
+            bottom: 36,
+            left: 12,
+            padding: 10,
+            minWidth: 210,
+            zIndex: 900,
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+            <span style={{ fontWeight: 800, fontSize: 11, color: "#8fdc00" }}>Legend</span>
+            <button
+              onClick={() => setShowLegend(false)}
+              style={{ background: "none", border: "none", color: "#3d6e3d", cursor: "pointer" }}
+            >
+              ×
+            </button>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+            <div style={{ width: 16, height: 16, borderRadius: "50%", background: "#28a745" }} />
+            <span style={{ fontSize: 11, color: "#b8dcb8" }}>Manhole — Normal</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+            <div style={{ width: 22, height: 4, background: "#2b7bff" }} />
+            <span style={{ fontSize: 11, color: "#b8dcb8" }}>Pipeline — Normal</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+            <div style={{ width: 22, height: 4, background: "#dc3545" }} />
+            <span style={{ fontSize: 11, color: "#b8dcb8" }}>Pipeline — Blocked</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+            <div style={{ width: 16, height: 16, background: "#f4a261" }} />
+            <span style={{ fontSize: 11, color: "#b8dcb8" }}>Suburb</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+            <div style={{ width: 16, height: 16, background: "#ff7800", borderRadius: "50%" }} />
+            <span style={{ fontSize: 11, color: "#b8dcb8" }}>Heatmap (Hotspots)</span>
+          </div>
+        </div>
+      )}
+
+      {coords && (
+        <div
+          style={{
+            ...glass,
+            position: "absolute",
+            bottom: 8,
+            right: 90,
+            padding: "4px 12px",
+            fontSize: 11,
+            color: "#7ab87a",
+          }}
+        >
+          📍 {coords}
+        </div>
+      )}
+    </div>
+  );
+}
