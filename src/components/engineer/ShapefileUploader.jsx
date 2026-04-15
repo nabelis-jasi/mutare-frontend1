@@ -8,6 +8,7 @@ export default function ShapefileUploader({ onUploadComplete, onClose, onGeoJson
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState('');
   const [statusCls, setStatusCls] = useState('info');
+  const [layerType, setLayerType] = useState('manhole'); // manhole, pipeline, suburb
   const inputRef = useRef();
 
   const pick = (f) => {
@@ -44,13 +45,12 @@ export default function ShapefileUploader({ onUploadComplete, onClose, onGeoJson
       setStatus('File processed successfully!');
       setStatusCls('ok');
 
-      // Determine layer type from filename or user selection? For simplicity, we'll ask user.
-      // We'll add a dropdown to select layer type before upload.
-      // But for now, we'll assume the parent component knows the layer type.
-      // We'll call onGeoJsonLoaded with geojson and a layer type (manhole/pipeline/suburb)
-      // To keep it simple, we'll add a select in this component.
-      // I'll modify the component to include a layer type dropdown.
-      // However, the original component didn't have it. We'll add it.
+      if (onGeoJsonLoaded) {
+        onGeoJsonLoaded(geojson, layerType);
+      }
+      if (onUploadComplete) onUploadComplete();
+      // Optionally close panel after delay
+      setTimeout(() => onClose(), 1500);
     } catch (err) {
       const errMsg = err.response?.data?.error || err.message;
       setStatus(`Import failed: ${errMsg}`);
@@ -60,16 +60,13 @@ export default function ShapefileUploader({ onUploadComplete, onClose, onGeoJson
     }
   };
 
-  // We'll add a state for layer type
-  const [layerType, setLayerType] = useState('manhole');
-
   return (
     <div className="wd-panel" style={{ '--panel-icon-bg': 'rgba(74,173,74,0.08)', '--panel-icon-border': 'rgba(74,173,74,0.25)' }}>
       <div className="wd-panel-header">
         <div className="wd-panel-icon">📤</div>
         <div>
           <div className="wd-panel-title">Upload Shapefile</div>
-          <div className="wd-panel-sub">ZIP archive · Point &amp; LineString</div>
+          <div className="wd-panel-sub">ZIP archive · Point, Line, Polygon</div>
         </div>
         <button className="wd-panel-close" onClick={onClose}>×</button>
       </div>
@@ -77,10 +74,14 @@ export default function ShapefileUploader({ onUploadComplete, onClose, onGeoJson
       <div className="wd-panel-body">
         {/* Layer type selector */}
         <div className="wd-section">Layer Type</div>
-        <select value={layerType} onChange={(e) => setLayerType(e.target.value)} style={{ marginBottom: '1rem', width: '100%', padding: '0.5rem' }}>
-          <option value="manhole">Manhole</option>
-          <option value="pipeline">Pipeline</option>
-          <option value="suburb">Suburb</option>
+        <select
+          value={layerType}
+          onChange={(e) => setLayerType(e.target.value)}
+          style={{ width: '100%', padding: '0.5rem', marginBottom: '1rem', borderRadius: '6px', border: '1px solid #ccc' }}
+        >
+          <option value="manhole">Manhole (Point)</option>
+          <option value="pipeline">Pipeline (Line)</option>
+          <option value="suburb">Suburb (Polygon)</option>
         </select>
 
         {/* Drop zone */}
