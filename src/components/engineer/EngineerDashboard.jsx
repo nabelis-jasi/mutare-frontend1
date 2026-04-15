@@ -15,7 +15,7 @@ import HomePanel from './HomePanel';
 import ProfilePanel from './ProfilePanel';
 import SettingsPanel from './SettingsPanel';
 
-// Drawers and modals (keep as before)
+// Drawers and modals
 import DrawerDownload from '../../containers/DrawerDownload';
 import DrawerUpload from '../../containers/DrawerUpload';
 import DrawerMap from '../../containers/DrawerMap';
@@ -32,9 +32,9 @@ export default function EngineerDashboard({ user, onLogout }) {
   const [activeTab, setActiveTab] = useState('home');
   const [selectedFeature, setFeature] = useState(null);
   const [selectedForm, setSelectedForm] = useState(null);
-  const [uploadedLayers, setUploadedLayers] = useState([]); // each: { id, geojson, type, name }
+  const [uploadedLayers, setUploadedLayers] = useState([]); // { id, geojson, type, name }
   const [pendingEditCount, setPendingEditCount] = useState(0);
-  const [loading, setLoading] = useState(false); // not used for data fetch anymore
+  const [loading, setLoading] = useState(false);
 
   // Drawers and modals state
   const [drawerOpen, setDrawerOpen] = useState(null);
@@ -43,7 +43,6 @@ export default function EngineerDashboard({ user, onLogout }) {
   const [modalView, setModalView] = useState({ isOpen: false, headers: [], answers: [], entryTitle: '' });
   const [isLoading, setIsLoading] = useState(false);
 
-  // Fetch pending edit count (still needed)
   useEffect(() => {
     fetchPendingCount();
   }, []);
@@ -59,7 +58,6 @@ export default function EngineerDashboard({ user, onLogout }) {
 
   const handleDataRefresh = () => {
     fetchPendingCount();
-    // No spatial data refresh needed
   };
 
   const handleGeoJsonLoaded = (geojson, layerType) => {
@@ -72,13 +70,13 @@ export default function EngineerDashboard({ user, onLogout }) {
     setUploadedLayers(prev => [...prev, newLayer]);
   };
 
-  // Handlers for drawers and modals (unchanged)
-  const handleDownload = async (format, includeMedia) => { ... };
-  const handleUpload = async (file) => { ... };
-  const handleViewEntry = (headers, answers, entryTitle) => { ... };
-  const handleDeleteEntry = (entryUuid, entryTitle) => { ... };
-  const confirmDelete = async () => { ... };
-  const handleEditEntry = (entryUuid) => { ... };
+  // Handlers for drawers and modals (unchanged from your version)
+  const handleDownload = async (format, includeMedia) => { /* ... */ };
+  const handleUpload = async (file) => { /* ... */ };
+  const handleViewEntry = (headers, answers, entryTitle) => { /* ... */ };
+  const handleDeleteEntry = (entryUuid, entryTitle) => { /* ... */ };
+  const confirmDelete = async () => { /* ... */ };
+  const handleEditEntry = (entryUuid) => { /* ... */ };
 
   const renderContent = () => {
     switch (activeTab) {
@@ -122,8 +120,8 @@ export default function EngineerDashboard({ user, onLogout }) {
     }
   };
 
-  // Styles (same as before, but adjust tab bar to include uploader)
-  const styles = { ... }; // keep your existing styles
+  // Inline styles (keep your existing styles)
+  const styles = { /* your existing styles */ };
 
   return (
     <div style={styles.root}>
@@ -148,7 +146,16 @@ export default function EngineerDashboard({ user, onLogout }) {
           </div>
         </div>
       </div>
+
       {/* Drawers and modals (unchanged) */}
+      {drawerOpen === 'download' && <DrawerDownload onClose={() => setDrawerOpen(null)} onDownload={handleDownload} />}
+      {drawerOpen === 'upload' && <DrawerUpload onClose={() => setDrawerOpen(null)} onUpload={handleUpload} />}
+      {drawerOpen === 'map' && selectedEntry && <DrawerMap entries={[selectedEntry]} onClose={() => setDrawerOpen(null)} />}
+      {drawerOpen === 'entry' && selectedEntry && <DrawerEntry entry={selectedEntry} onClose={() => setDrawerOpen(null)} />}
+
+      <ModalDeleteEntry isOpen={modalDelete.isOpen} onClose={() => setModalDelete({ isOpen: false, entryUuid: null, entryTitle: '' })} onConfirm={confirmDelete} entryTitle={modalDelete.entryTitle} />
+      <ModalViewEntry isOpen={modalView.isOpen} onClose={() => setModalView({ isOpen: false, headers: [], answers: [], entryTitle: '' })} headers={modalView.headers} answers={modalView.answers} entryTitle={modalView.entryTitle} />
+      <WaitOverlay isVisible={isLoading} message="Processing..." />
     </div>
   );
 }
