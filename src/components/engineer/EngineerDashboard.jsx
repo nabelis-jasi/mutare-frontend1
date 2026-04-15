@@ -2,7 +2,6 @@
 import React, { useState, useEffect } from 'react';
 import api from "../../api/api";
 import MapView from '../MapView';
-import ConnectionsPanel from './ConnectionsPanel';
 import AnalyticsDashboard from './AnalyticsDashboard';
 import DataEditor from './DataEditor';
 import ShapefileUploader from './ShapefileUploader';
@@ -16,7 +15,7 @@ import HomePanel from './HomePanel';
 import ProfilePanel from './ProfilePanel';
 import SettingsPanel from './SettingsPanel';
 
-// Import new containers
+// Drawers and modals
 import DrawerDownload from '../../containers/DrawerDownload';
 import DrawerUpload from '../../containers/DrawerUpload';
 import DrawerMap from '../../containers/DrawerMap';
@@ -36,24 +35,20 @@ export default function EngineerDashboard({ user, onLogout }) {
   const [manholes, setManholes] = useState([]);
   const [pipes, setPipelines] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [connectionActive, setConnectionActive] = useState(false);
   const [pendingEditCount, setPendingEditCount] = useState(0);
 
-  // New state for drawers and modals
+  // Drawers and modals
   const [drawerOpen, setDrawerOpen] = useState(null);
   const [selectedEntry, setSelectedEntry] = useState(null);
   const [modalDelete, setModalDelete] = useState({ isOpen: false, entryUuid: null, entryTitle: '' });
   const [modalView, setModalView] = useState({ isOpen: false, headers: [], answers: [], entryTitle: '' });
   const [isLoading, setIsLoading] = useState(false);
 
+  // Fetch pending edit count
   useEffect(() => {
-    checkConnection();
     fetchPendingCount();
+    fetchData();
   }, []);
-
-  useEffect(() => {
-    if (connectionActive) fetchData();
-  }, [connectionActive]);
 
   const fetchPendingCount = async () => {
     try {
@@ -74,18 +69,9 @@ export default function EngineerDashboard({ user, onLogout }) {
       setManholes(manholesRes.data || []);
       setPipelines(pipelinesRes.data || []);
     } catch (err) {
-      if (err.response?.status === 503) setConnectionActive(false);
+      console.error('Error fetching spatial data', err);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const checkConnection = async () => {
-    try {
-      await api.get('/connections/active');
-      setConnectionActive(true);
-    } catch {
-      setConnectionActive(false);
     }
   };
 
@@ -94,12 +80,7 @@ export default function EngineerDashboard({ user, onLogout }) {
     fetchPendingCount();
   };
 
-  const handleConnectionActivated = () => {
-    checkConnection();
-    fetchData();
-  };
-
-  // Handlers for drawers and modals (unchanged)
+  // Handlers for drawers and modals
   const handleDownload = async (format, includeMedia) => {
     setIsLoading(true);
     try {
@@ -165,8 +146,6 @@ export default function EngineerDashboard({ user, onLogout }) {
     switch (activeTab) {
       case 'home':
         return <HomePanel manholes={manholes} pipes={pipes} onNavigate={setActiveTab} onClose={() => {}} />;
-      case 'connections':
-        return <ConnectionsPanel onClose={() => setActiveTab('home')} onConnectionActivated={handleConnectionActivated} />;
       case 'analytics':
         return <AnalyticsDashboard onClose={() => setActiveTab('home')} />;
       case 'editor':
@@ -205,7 +184,6 @@ export default function EngineerDashboard({ user, onLogout }) {
     }
   };
 
-  // Updated inline styles – tab bar now uses a two‑column grid
   const styles = {
     root: {
       display: 'flex',
@@ -246,7 +224,6 @@ export default function EngineerDashboard({ user, onLogout }) {
       flexDirection: 'column',
       overflow: 'hidden'
     },
-    // Tab bar now uses CSS Grid with two columns
     tabBar: {
       display: 'grid',
       gridTemplateColumns: 'repeat(2, 1fr)',
@@ -289,7 +266,7 @@ export default function EngineerDashboard({ user, onLogout }) {
 
   return (
     <div style={styles.root}>
-      {/* TOP BAR (unchanged) */}
+      {/* TOP BAR */}
       <header style={styles.topbar}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <span style={{ fontSize: '1.8rem' }}>🪣</span>
@@ -306,10 +283,6 @@ export default function EngineerDashboard({ user, onLogout }) {
           <div style={{ background: '#eef2f5', padding: '0.25rem 0.75rem', borderRadius: '20px', fontSize: '0.8rem' }}>
             <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#a7c957', marginRight: '0.4rem' }}></span>
             {pipes?.length ?? 0} Pipelines
-          </div>
-          <div style={{ background: '#eef2f5', padding: '0.25rem 0.75rem', borderRadius: '20px', fontSize: '0.8rem' }}>
-            <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: connectionActive ? '#2a9d8f' : '#e76f51', marginRight: '0.4rem' }}></span>
-            {connectionActive ? 'Connected' : 'No DB'}
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -335,10 +308,8 @@ export default function EngineerDashboard({ user, onLogout }) {
 
         {/* RIGHT PANEL WITH TABS */}
         <div style={styles.panelContainer}>
-          {/* Tabs arranged in two columns */}
           <div style={styles.tabBar}>
             <button style={{ ...styles.tab, ...(activeTab === 'home' ? styles.activeTab : {}) }} onClick={() => setActiveTab('home')}>🏠 Home</button>
-            <button style={{ ...styles.tab, ...(activeTab === 'connections' ? styles.activeTab : {}) }} onClick={() => setActiveTab('connections')}>🔌 Connections</button>
             <button style={{ ...styles.tab, ...(activeTab === 'analytics' ? styles.activeTab : {}) }} onClick={() => setActiveTab('analytics')}>📊 Analytics</button>
             <button style={{ ...styles.tab, ...(activeTab === 'forms' ? styles.activeTab : {}) }} onClick={() => setActiveTab('forms')}>📝 Forms</button>
             <button style={{ ...styles.tab, ...(activeTab === 'submissions' ? styles.activeTab : {}) }} onClick={() => setActiveTab('submissions')}>📋 Submissions</button>
@@ -355,7 +326,7 @@ export default function EngineerDashboard({ user, onLogout }) {
         </div>
       </div>
 
-      {/* Drawers and Modals (unchanged) */}
+      {/* Drawers and Modals */}
       {drawerOpen === 'download' && (
         <DrawerDownload onClose={() => setDrawerOpen(null)} onDownload={handleDownload} />
       )}
