@@ -6,24 +6,22 @@ import {
 } from 'recharts';
 import api from '../../api/api';
 import CustomChartBuilder from './CustomChartBuilder';
-import DistributionCharts from '../../containers/DistributionCharts';
+import DistributionChart from '../../containers/DistributionChart';
 import FilterEntriesControls from '../../containers/FilterEntriesControls';
 import DrawerDownload from '../../containers/DrawerDownload';
 import ModalPrepareDownload from '../../containers/ModalPrepareDownload';
 import WaitOverlay from '../../containers/WaitOverlay';
-import './Dashboard.css';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
 
-export default function AnalyticsDashboard({ onClose }) {
+export default function AnalyticsDashboard({ onClose, uploadedLayers = [] }) {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
   const [showDownloadDrawer, setShowDownloadDrawer] = useState(false);
   const [showPrepareModal, setShowPrepareModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Data states
-  const [counts, setCounts] = useState({ manholes: 0, pipelines: 0, suburbs: 0 });
+  // Backend data states (non‑spatial)
   const [maintenanceStats, setMaintenanceStats] = useState([]);
   const [assetEditsStats, setAssetEditsStats] = useState([]);
   const [operatorActivity, setOperatorActivity] = useState([]);
@@ -37,7 +35,19 @@ export default function AnalyticsDashboard({ onClose }) {
   const [filters, setFilters] = useState({ status: '', feature_type: '', start_date: '', end_date: '' });
   const [distributionData, setDistributionData] = useState([]);
 
-  // Fetch all data
+  // Compute spatial counts from uploaded layers
+  const computeSpatialCounts = () => {
+    let manholes = 0, pipelines = 0, suburbs = 0;
+    uploadedLayers.forEach(layer => {
+      const features = layer.geojson.features;
+      if (layer.type === 'manhole') manholes += features.length;
+      else if (layer.type === 'pipeline') pipelines += features.length;
+      else if (layer.type === 'suburb') suburbs += features.length;
+    });
+    return { manholes, pipelines, suburbs };
+  };
+  const spatialCounts = computeSpatialCounts();
+
   useEffect(() => {
     fetchAllData();
     fetchDistributionData();
@@ -47,7 +57,6 @@ export default function AnalyticsDashboard({ onClose }) {
     setLoading(true);
     try {
       const [
-        countsRes,
         maintRes,
         editsRes,
         activityRes,
@@ -58,7 +67,6 @@ export default function AnalyticsDashboard({ onClose }) {
         weeklyRes,
         monthlyRes
       ] = await Promise.all([
-        api.get('/analytics/counts'),
         api.get('/analytics/maintenance-stats'),
         api.get('/analytics/asset-edits-stats'),
         api.get('/analytics/operator-activity'),
@@ -69,8 +77,6 @@ export default function AnalyticsDashboard({ onClose }) {
         api.get('/analytics/weekly-reports'),
         api.get('/analytics/monthly-reports')
       ]);
-
-      setCounts(countsRes.data);
       setMaintenanceStats(maintRes.data);
       setAssetEditsStats(editsRes.data);
       setOperatorActivity(activityRes.data);
@@ -216,10 +222,11 @@ export default function AnalyticsDashboard({ onClose }) {
         {/* Overview Tab */}
         {activeTab === 'overview' && (
           <>
+            {/* KPI Cards using computed spatial counts */}
             <div style={styles.kpiGrid}>
-              <div style={styles.kpiCard}><h3>Manholes</h3><p style={{ fontSize: '2rem', fontWeight: 'bold' }}>{counts.manholes}</p></div>
-              <div style={styles.kpiCard}><h3>Pipelines</h3><p style={{ fontSize: '2rem', fontWeight: 'bold' }}>{counts.pipelines}</p></div>
-              <div style={styles.kpiCard}><h3>Suburbs</h3><p style={{ fontSize: '2rem', fontWeight: 'bold' }}>{counts.suburbs}</p></div>
+              <div style={styles.kpiCard}><h3>Manholes</h3><p style={{ fontSize: '2rem', fontWeight: 'bold' }}>{spatialCounts.manholes}</p></div>
+              <div style={styles.kpiCard}><h3>Pipelines</h3><p style={{ fontSize: '2rem', fontWeight: 'bold' }}>{spatialCounts.pipelines}</p></div>
+              <div style={styles.kpiCard}><h3>Suburbs</h3><p style={{ fontSize: '2rem', fontWeight: 'bold' }}>{spatialCounts.suburbs}</p></div>
               <div style={styles.kpiCard}><h3>Avg Resolution Time</h3><p style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{resolutionTime} hrs</p></div>
             </div>
 
@@ -229,9 +236,7 @@ export default function AnalyticsDashboard({ onClose }) {
                 <ResponsiveContainer width="100%" height={300}>
                   <PieChart>
                     <Pie data={maintenanceStats} dataKey="count" nameKey="status" cx="50%" cy="50%" outerRadius={80} label>
-                      {maintenanceStats.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                      ))}
+                      {maintenanceStats.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
                     </Pie>
                     <Tooltip />
                   </PieChart>
@@ -242,9 +247,7 @@ export default function AnalyticsDashboard({ onClose }) {
                 <ResponsiveContainer width="100%" height={300}>
                   <PieChart>
                     <Pie data={assetEditsStats} dataKey="count" nameKey="status" cx="50%" cy="50%" outerRadius={80} label>
-                      {assetEditsStats.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                      ))}
+                      {assetEditsStats.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
                     </Pie>
                     <Tooltip />
                   </PieChart>
@@ -268,7 +271,7 @@ export default function AnalyticsDashboard({ onClose }) {
           </>
         )}
 
-        {/* Maintenance Tab */}
+        {/* Maintenance Tab (unchanged) */}
         {activeTab === 'maintenance' && (
           <div>
             <h3>Maintenance Records</h3>
@@ -302,48 +305,32 @@ export default function AnalyticsDashboard({ onClose }) {
                       <td style={styles.tableCell}>{new Date(rec.created_at).toLocaleString()}</td>
                     </tr>
                   ))}
-                  {maintenanceRecords.length === 0 && (
-                    <tr>
-                      <td colSpan="6" style={styles.tableCell}>No records found</td>
-                    </tr>
-                  )}
+                  {maintenanceRecords.length === 0 && <tr><td colSpan="6" style={styles.tableCell}>No records found</td></tr>}
                 </tbody>
               </table>
             </div>
           </div>
         )}
 
-        {/* Flags Tab */}
+        {/* Flags Tab (unchanged) */}
         {activeTab === 'flags' && (
           <div>
             <h3>Flag Hotspots</h3>
             <table style={styles.dataTable}>
               <thead>
-                <tr>
-                  <th style={styles.tableHeader}>Suburb</th>
-                  <th style={styles.tableHeader}>Feature ID</th>
-                  <th style={styles.tableHeader}>Flag Count</th>
-                </tr>
+                <tr><th style={styles.tableHeader}>Suburb</th><th style={styles.tableHeader}>Feature ID</th><th style={styles.tableHeader}>Flag Count</th></tr>
               </thead>
               <tbody>
                 {flagHotspots.map((h, i) => (
-                  <tr key={i}>
-                    <td style={styles.tableCell}>{h.suburb}</td>
-                    <td style={styles.tableCell}>{h.feature_id}</td>
-                    <td style={styles.tableCell}>{h.flag_count}</td>
-                  </tr>
+                  <tr key={i}><td style={styles.tableCell}>{h.suburb}</td><td style={styles.tableCell}>{h.feature_id}</td><td style={styles.tableCell}>{h.flag_count}</td></tr>
                 ))}
-                {flagHotspots.length === 0 && (
-                  <tr>
-                    <td colSpan="3" style={styles.tableCell}>No flags reported</td>
-                  </tr>
-                )}
+                {flagHotspots.length === 0 && <tr><td colSpan="3" style={styles.tableCell}>No flags reported</td></tr>}
               </tbody>
             </table>
           </div>
         )}
 
-        {/* Operator Activity Tab */}
+        {/* Operator Activity Tab (unchanged) */}
         {activeTab === 'operator' && (
           <div>
             <h3>Operator Job Logs</h3>
@@ -368,18 +355,14 @@ export default function AnalyticsDashboard({ onClose }) {
                       <td style={styles.tableCell}>{log.feature_id || '—'}</td>
                     </tr>
                   ))}
-                  {operatorActivity.length === 0 && (
-                    <tr>
-                      <td colSpan="5" style={styles.tableCell}>No activity logs found</td>
-                    </tr>
-                  )}
+                  {operatorActivity.length === 0 && <tr><td colSpan="5" style={styles.tableCell}>No activity logs found</td></tr>}
                 </tbody>
               </table>
             </div>
           </div>
         )}
 
-        {/* Periodic Reports Tab */}
+        {/* Periodic Reports Tab (unchanged) */}
         {activeTab === 'reports' && (
           <div>
             <h3>Periodic Reports</h3>
@@ -391,12 +374,7 @@ export default function AnalyticsDashboard({ onClose }) {
             <div style={{ overflowX: 'auto' }}>
               <table style={styles.dataTable}>
                 <thead>
-                  <tr>
-                    <th style={styles.tableHeader}>Period</th>
-                    <th style={styles.tableHeader}>Maintenance Requests</th>
-                    <th style={styles.tableHeader}>Asset Edits</th>
-                    <th style={styles.tableHeader}>Flags Reported</th>
-                  </tr>
+                  <tr><th style={styles.tableHeader}>Period</th><th style={styles.tableHeader}>Maintenance Requests</th><th style={styles.tableHeader}>Asset Edits</th><th style={styles.tableHeader}>Flags Reported</th></tr>
                 </thead>
                 <tbody>
                   {getReportData().map(row => (
@@ -407,18 +385,14 @@ export default function AnalyticsDashboard({ onClose }) {
                       <td style={styles.tableCell}>{row.flags_count || 0}</td>
                     </tr>
                   ))}
-                  {getReportData().length === 0 && (
-                    <tr>
-                      <td colSpan="4" style={styles.tableCell}>No data available</td>
-                    </tr>
-                  )}
+                  {getReportData().length === 0 && <tr><td colSpan="4" style={styles.tableCell}>No data available</td></tr>}
                 </tbody>
               </table>
             </div>
           </div>
         )}
 
-        {/* Distribution Tab */}
+        {/* Distribution Tab (unchanged) */}
         {activeTab === 'distribution' && (
           <div>
             <h3>Data Distribution</h3>
@@ -426,7 +400,7 @@ export default function AnalyticsDashboard({ onClose }) {
           </div>
         )}
 
-        {/* Custom Chart Tab */}
+        {/* Custom Chart Tab (unchanged) */}
         {activeTab === 'custom' && (
           <div>
             <h3>Custom Chart Builder</h3>
@@ -441,10 +415,7 @@ export default function AnalyticsDashboard({ onClose }) {
 
       {/* Download Drawer */}
       {showDownloadDrawer && (
-        <DrawerDownload
-          onClose={() => setShowDownloadDrawer(false)}
-          onDownload={handleDownload}
-        />
+        <DrawerDownload onClose={() => setShowDownloadDrawer(false)} onDownload={handleDownload} />
       )}
 
       {/* Prepare Download Modal */}
