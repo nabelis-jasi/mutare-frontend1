@@ -1,0 +1,16 @@
+* {
+  color: forestgreen;
+  font-family: 'Segoe UI', monospace;
+}
+body {
+  background-color: #0a1f0a;
+}
+button, input, select, textarea {
+  background-color: #1e3a1e;
+  border: 1px solid forestgreen;
+  color: forestgreen;
+}
+button:hover {
+  background-color: forestgreen;
+  color: black;
+}
