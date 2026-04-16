@@ -6,8 +6,8 @@
   <title>Mutare Sewer Asset Manager</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="../plugins/leaflet.heat.js"></script>
-  <script src="../plugins/jspdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.0.1/leaflet-heat.js"></script>
+  <script src="https://unpkg.com/jspdf@latest/dist/jspdf.umd.min.js"></script>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -31,21 +31,42 @@
   </div>
   <div class="tabs">
     <div class="tab active" data-tab="map-tab">🗺️ Heatmap</div>
+    <div class="tab" data-tab="layers-tab">🗂️ Layers</div>
     <div class="tab" data-tab="reports-tab">📊 Reports</div>
   </div>
+  
+  <!-- Map tab -->
   <div id="map-tab" class="tab-content active">
     <div id="map"></div>
     <div id="asset-profile" class="profile-sidebar">
       <h3>Asset Profile</h3>
-      <p>Click on a manhole marker to see details</p>
+      <p>Click on a marker to see details</p>
     </div>
   </div>
+  
+  <!-- Layers tab (QGIS‑like) -->
+  <div id="layers-tab" class="tab-content">
+    <div style="display: flex; gap: 20px;">
+      <div style="flex: 1; background: #1e3a1e; border-radius: 8px; padding: 10px;">
+        <h3>📦 PostGIS Layers</h3>
+        <button id="refresh-layers-btn" style="margin-bottom: 10px;">⟳ Refresh</button>
+        <div id="available-layers-list" style="max-height: 400px; overflow-y: auto;"></div>
+      </div>
+      <div style="flex: 1; background: #1e3a1e; border-radius: 8px; padding: 10px;">
+        <h3>🗺️ Active Layers</h3>
+        <div id="active-layers-list"></div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Reports tab -->
   <div id="reports-tab" class="tab-content">
     <h3>Weekly Maintenance Summary</h3>
     <div id="report-preview" style="background:#1e3a1e; padding:15px; border-radius:12px;">
       <p>Use the button above to generate a PDF report.</p>
     </div>
   </div>
+  
   <footer>Mutare City Council - Asset Management System | Forest Green Edition</footer>
 </div>
 <script src="renderer.js"></script>
