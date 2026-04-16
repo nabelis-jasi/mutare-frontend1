@@ -12,7 +12,6 @@ let pgClient = null;
 // Credential handling
 ipcMain.handle('db:save-credentials', async (event, creds) => {
   store.set('pg', creds);
-  // Test connection
   const testClient = new Client(creds);
   await testClient.connect();
   await testClient.end();
@@ -23,7 +22,6 @@ ipcMain.handle('db:get-credentials', () => {
   return store.get('pg') || null;
 });
 
-// Get a live PostgreSQL client (reuse or create new)
 async function getPgClient() {
   const creds = store.get('pg');
   if (!creds) throw new Error('No credentials');
@@ -34,37 +32,32 @@ async function getPgClient() {
   return pgClient;
 }
 
-// Generic query (for renderer)
 ipcMain.handle('db:query', async (event, sql, params = []) => {
   const client = await getPgClient();
   const res = await client.query(sql, params);
   return res.rows;
 });
 
-// Queue a log (offline)
 ipcMain.handle('db:queue-log', async (event, operation, tableName, data) => {
   queueLog(operation, tableName, data);
   return { queued: true };
 });
 
-// Sync offline outbox to PostgreSQL
 ipcMain.handle('db:sync-now', async () => {
   const client = await getPgClient();
   await syncOutboxToPostgres(client);
   return { synced: true };
 });
 
-// Asset profile
 ipcMain.handle('asset:profile', async (event, assetId) => {
   const client = await getPgClient();
   return await getAssetProfile(assetId, client);
 });
 
-// Create the window
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    width: 1400,
+    height: 900,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -73,12 +66,11 @@ function createWindow() {
     icon: path.join(__dirname, 'assets', 'mutare_logo.png'),
   });
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
-  // Optional: open dev tools for debugging
-  // mainWindow.webContents.openDevTools();
+  // mainWindow.webContents.openDevTools(); // uncomment for debugging
 }
 
 app.whenReady().then(() => {
-  initOutbox(); // create SQLite outbox database
+  initOutbox();
   createWindow();
 });
 
