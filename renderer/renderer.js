@@ -1,5 +1,7 @@
 let map, heatLayer, markersLayer;
+let activeLayers = {}; // name -> L.geoJSON layer
 
+// ----- Wizard & Init -----
 async function checkFirstRun() {
   const creds = await window.electronAPI.getCredentials();
   if (!creds) {
@@ -28,7 +30,7 @@ document.getElementById('save-creds')?.addEventListener('click', async () => {
   }
 });
 
-// Tab switching
+// ----- Tab switching -----
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
     const targetId = tab.dataset.tab;
@@ -37,9 +39,11 @@ document.querySelectorAll('.tab').forEach(tab => {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     tab.classList.add('active');
     if (targetId === 'map-tab' && map) map.invalidateSize();
+    if (targetId === 'layers-tab') loadAvailableSpatialTables();
   });
 });
 
+// ----- Map & Heatmap -----
 async function initMap() {
   if (map) map.remove();
   map = L.map('map').setView([-18.9735, 32.6705], 13);
@@ -49,54 +53,160 @@ async function initMap() {
 
   // Heatmap from job_logs (last 30 days)
   const hotspots = await window.electronAPI.query(`
-    SELECT latitude, longitude, COUNT(*) as intensity
-    FROM job_logs
-    WHERE date > NOW() - INTERVAL '30 days'
-    GROUP BY latitude, longitude
+    SELECT a.latitude, a.longitude, COUNT(jl.id) as intensity
+    FROM job_logs jl
+    JOIN assets a ON jl.asset_id = a.id
+    WHERE jl.date > NOW() - INTERVAL '30 days'
+    GROUP BY a.latitude, a.longitude
   `);
   const heatPoints = hotspots.map(h => [h.latitude, h.longitude, h.intensity]);
   heatLayer = L.heatLayer(heatPoints, { radius: 25, blur: 15, maxZoom: 17 });
   heatLayer.addTo(map);
 
-  // Markers for each manhole
-  const manholes = await window.electronAPI.query(`
-    SELECT DISTINCT manhole_id, latitude, longitude FROM job_logs
+  // Asset markers (from assets table with geometry)
+  const assets = await window.electronAPI.query(`
+    SELECT id, asset_code, latitude, longitude FROM assets WHERE latitude IS NOT NULL
   `);
   markersLayer = L.layerGroup().addTo(map);
-  for (const mh of manholes) {
-    const marker = L.circleMarker([mh.latitude, mh.longitude], {
+  for (const a of assets) {
+    const marker = L.circleMarker([a.latitude, a.longitude], {
       radius: 6,
       color: 'forestgreen',
       fillOpacity: 0.8,
     });
-    marker.bindPopup(`Manhole ${mh.manhole_id}`);
+    marker.bindPopup(`<b>${a.asset_code}</b>`);
     marker.on('click', async () => {
-      const profile = await window.electronAPI.getAssetProfile(mh.manhole_id);
+      const profile = await window.electronAPI.getAssetProfile(a.id);
       if (profile) {
         document.getElementById('asset-profile').innerHTML = `
-          <h3>Asset: Manhole ${profile.asset.id}</h3>
+          <h3>Asset: ${profile.asset.asset_code}</h3>
+          <p><strong>Type:</strong> ${profile.asset.asset_type}</p>
           <p><strong>Installed:</strong> ${profile.asset.installation_date || 'Unknown'}</p>
-          <p><strong>Material:</strong> ${profile.asset.material || 'Cast Iron'}</p>
+          <p><strong>Material:</strong> ${profile.asset.material || 'N/A'}</p>
           <p><strong>Risk Score:</strong> 
             <span style="color: ${profile.risk > 70 ? '#ff8888' : '#88ff88'}">${profile.risk}%</span>
           </p>
           <h4>Maintenance History</h4>
-          <ul>${profile.logs.map(log => `<li>${new Date(log.date).toLocaleDateString()}: ${log.action || 'Cleared'}</li>`).join('') || '<li>None</li>'}</ul>
+          <ul>${profile.logs.map(log => `<li>${new Date(log.date).toLocaleDateString()}: ${log.job_type} - ${log.action || ''}</li>`).join('') || '<li>No logs</li>'}</ul>
         `;
-      } else {
-        document.getElementById('asset-profile').innerHTML = `<p>No asset data found for ID ${mh.manhole_id}</p>`;
       }
     });
     marker.addTo(markersLayer);
   }
 }
 
+// ----- Layer Manager (QGIS‑like) -----
+async function loadAvailableSpatialTables() {
+  const sql = `
+    SELECT f_table_schema, f_table_name, f_geometry_column, srid, type
+    FROM geometry_columns
+    WHERE f_table_schema NOT IN ('information_schema', 'pg_catalog', 'topology', 'tiger')
+    ORDER BY f_table_name
+  `;
+  const tables = await window.electronAPI.query(sql);
+  const container = document.getElementById('available-layers-list');
+  if (!container) return;
+  container.innerHTML = '';
+  for (const t of tables) {
+    const div = document.createElement('div');
+    div.className = 'layer-item';
+    div.innerHTML = `
+      <span>📐 ${t.f_table_schema}.${t.f_table_name} (${t.type})</span>
+      <button class="add-layer-btn" data-schema="${t.f_table_schema}" data-table="${t.f_table_name}" data-geom="${t.f_geometry_column}">＋ Add</button>
+    `;
+    container.appendChild(div);
+  }
+  document.querySelectorAll('.add-layer-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const schema = btn.dataset.schema;
+      const table = btn.dataset.table;
+      const geomCol = btn.dataset.geom;
+      await addLayerFromTable(schema, table, geomCol);
+    });
+  });
+}
+
+async function addLayerFromTable(schema, table, geomCol) {
+  const layerName = `${schema}.${table}`;
+  if (activeLayers[layerName]) {
+    alert('Layer already added');
+    return;
+  }
+  const sql = `
+    SELECT ST_AsGeoJSON(${geomCol}) AS geojson, *
+    FROM ${schema}.${table}
+    WHERE ${geomCol} IS NOT NULL
+  `;
+  const rows = await window.electronAPI.query(sql);
+  const features = rows.map(row => {
+    const geojson = JSON.parse(row.geojson);
+    delete row.geojson;
+    return { type: 'Feature', geometry: geojson, properties: row };
+  });
+  const featureCollection = { type: 'FeatureCollection', features };
+  const layer = L.geoJSON(featureCollection, {
+    pointToLayer: (feature, latlng) => L.circleMarker(latlng, { radius: 5, color: 'forestgreen', fillOpacity: 0.6 }),
+    onEachFeature: (feature, layer) => {
+      if (feature.properties) {
+        const popup = Object.entries(feature.properties).map(([k,v]) => `<b>${k}</b>: ${v}`).join('<br>');
+        layer.bindPopup(popup);
+      }
+    }
+  }).addTo(map);
+  activeLayers[layerName] = layer;
+  updateActiveLayersList();
+}
+
+function updateActiveLayersList() {
+  const container = document.getElementById('active-layers-list');
+  if (!container) return;
+  container.innerHTML = '';
+  for (const [name, layer] of Object.entries(activeLayers)) {
+    const div = document.createElement('div');
+    div.className = 'layer-item';
+    div.innerHTML = `
+      <span>👁️ ${name}</span>
+      <div class="layer-controls">
+        <button class="toggle-visibility" data-layer="${name}">👁️</button>
+        <button class="remove-layer" data-layer="${name}">✖️</button>
+      </div>
+    `;
+    container.appendChild(div);
+  }
+  document.querySelectorAll('.toggle-visibility').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const layerName = btn.dataset.layer;
+      const layer = activeLayers[layerName];
+      if (map.hasLayer(layer)) {
+        map.removeLayer(layer);
+        btn.textContent = '👁️‍🗨️';
+      } else {
+        map.addLayer(layer);
+        btn.textContent = '👁️';
+      }
+    });
+  });
+  document.querySelectorAll('.remove-layer').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const layerName = btn.dataset.layer;
+      const layer = activeLayers[layerName];
+      if (layer) {
+        map.removeLayer(layer);
+        delete activeLayers[layerName];
+        updateActiveLayersList();
+      }
+    });
+  });
+}
+
+// ----- PDF Report -----
 async function generatePDFReport() {
   const jobs = await window.electronAPI.query(`
-    SELECT manhole_id, resolution_time, date
-    FROM job_logs
-    WHERE date >= NOW() - INTERVAL '7 days'
-    ORDER BY date DESC
+    SELECT a.asset_code, jl.job_type, jl.resolution_time_hours, jl.date, jl.performed_by
+    FROM job_logs jl
+    JOIN assets a ON jl.asset_id = a.id
+    WHERE jl.date >= NOW() - INTERVAL '7 days'
+    ORDER BY jl.date DESC
   `);
   if (!jobs.length) {
     alert('No jobs in the last 7 days.');
@@ -106,29 +216,26 @@ async function generatePDFReport() {
   const doc = new jsPDF();
   doc.setFontSize(20);
   doc.setTextColor(34, 139, 34);
-  doc.text('🏛️ Mutare City Council', 20, 20);
+  doc.text('Mutare City Council - Weekly Maintenance Report', 20, 20);
   doc.setFontSize(12);
-  doc.text('Weekly Maintenance Report', 20, 30);
-  doc.setFontSize(10);
-  doc.text(`Generated: ${new Date().toLocaleString()}`, 20, 40);
-
+  doc.text(`Generated: ${new Date().toLocaleString()}`, 20, 30);
   doc.autoTable({
-    startY: 50,
-    head: [['Manhole ID', 'Resolution (hrs)', 'Date']],
-    body: jobs.map(j => [j.manhole_id, j.resolution_time, new Date(j.date).toLocaleDateString()]),
+    startY: 40,
+    head: [['Asset Code', 'Job Type', 'Resolution (hrs)', 'Date', 'Performed By']],
+    body: jobs.map(j => [j.asset_code, j.job_type, j.resolution_time_hours || 'N/A', new Date(j.date).toLocaleDateString(), j.performed_by || '']),
     theme: 'striped',
     headStyles: { fillColor: [34, 139, 34], textColor: [255, 255, 255] },
     bodyStyles: { textColor: [34, 139, 34] },
-    alternateRowStyles: { fillColor: [240, 255, 240] },
   });
   const total = jobs.length;
-  const avg = jobs.reduce((a,b) => a + b.resolution_time, 0) / total;
+  const avg = jobs.reduce((a,b) => a + (b.resolution_time_hours || 0), 0) / total;
   const finalY = doc.lastAutoTable.finalY + 10;
-  doc.text(`Total blockages cleared: ${total}`, 20, finalY);
+  doc.text(`Total jobs: ${total}`, 20, finalY);
   doc.text(`Average resolution time: ${avg.toFixed(1)} hours`, 20, finalY + 10);
   doc.save(`Weekly_Report_${new Date().toISOString().slice(0,10)}.pdf`);
 }
 
+// ----- Offline Sync -----
 async function syncOfflineLogs() {
   const statusSpan = document.getElementById('sync-status');
   statusSpan.textContent = '🔄 Syncing...';
@@ -137,7 +244,6 @@ async function syncOfflineLogs() {
     await window.electronAPI.syncNow();
     statusSpan.textContent = '✅ Synced';
     statusSpan.style.color = 'forestgreen';
-    // Refresh map data
     if (document.querySelector('.tab.active').dataset.tab === 'map-tab') initMap();
   } catch (err) {
     statusSpan.textContent = '❌ Sync failed';
@@ -146,10 +252,13 @@ async function syncOfflineLogs() {
   }
 }
 
+// ----- Main init -----
 async function initApp() {
   await initMap();
   document.getElementById('sync-btn').onclick = syncOfflineLogs;
   document.getElementById('pdf-report-btn').onclick = generatePDFReport;
+  document.getElementById('refresh-layers-btn')?.addEventListener('click', loadAvailableSpatialTables);
+  await loadAvailableSpatialTables();
 }
 
 checkFirstRun();
