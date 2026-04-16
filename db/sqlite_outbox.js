@@ -1,36 +1,52 @@
 const Database = require('better-sqlite3');
+const { app } = require('electron');
 const path = require('path');
-const db = new Database(path.join(app.getPath('userData'), 'outbox.db'));
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS outbox (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    operation TEXT,   -- 'INSERT', 'UPDATE', 'DELETE'
-    table_name TEXT,
-    data TEXT,        -- JSON string
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-    synced BOOLEAN DEFAULT 0
-  )
-`);
+let db;
+
+function initOutbox() {
+  const userDataPath = app.getPath('userData');
+  const dbPath = path.join(userDataPath, 'outbox.db');
+  db = new Database(dbPath);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS outbox (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      operation TEXT NOT NULL,
+      table_name TEXT NOT NULL,
+      data TEXT NOT NULL,
+      timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+      synced INTEGER DEFAULT 0
+    )
+  `);
+  return db;
+}
 
 function queueLog(operation, tableName, data) {
+  if (!db) initOutbox();
   const stmt = db.prepare(`INSERT INTO outbox (operation, table_name, data) VALUES (?, ?, ?)`);
   stmt.run(operation, tableName, JSON.stringify(data));
 }
 
-async function syncToPostgres(pgClient) {
-  const unsynced = db.prepare(`SELECT * FROM outbox WHERE synced = 0`).all();
+async function syncOutboxToPostgres(pgClient) {
+  if (!db) initOutbox();
+  const unsynced = db.prepare(`SELECT * FROM outbox WHERE synced = 0 ORDER BY id`).all();
   for (const row of unsynced) {
     try {
+      const dataObj = JSON.parse(row.data);
       if (row.table_name === 'job_logs') {
         if (row.operation === 'INSERT') {
-          await pgClient.query('INSERT INTO job_logs (data) VALUES ($1)', [row.data]);
+          await pgClient.query(
+            `INSERT INTO job_logs (asset_id, job_type, action, resolution_time_hours, performed_by, notes)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [dataObj.asset_id, dataObj.job_type, dataObj.action, dataObj.resolution_time_hours, dataObj.performed_by, dataObj.notes]
+          );
         }
-        // handle UPDATE/DELETE similarly
       }
       db.prepare(`UPDATE outbox SET synced = 1 WHERE id = ?`).run(row.id);
     } catch (err) {
-      console.error('Sync failed for row', row.id, err);
+      console.error(`Failed to sync row ${row.id}:`, err);
     }
   }
 }
+
+module.exports = { initOutbox, queueLog, syncOutboxToPostgres };
