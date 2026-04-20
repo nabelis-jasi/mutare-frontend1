@@ -8,6 +8,7 @@ import Statistics from './components/statistics.js';
 import Hotspots from './components/hotspots.js';
 import Reports from './components/reports.js';
 import ReportProcessor from './components/reportprocessor.js';
+import DBConfig from './components/dbconfig.js';
 
 // Mock data for testing
 const mockManholes = [
@@ -74,20 +75,28 @@ function renderComponents() {
         console.error('ReportProcessor container or render method not found!');
     }
     
-    // TOOLBAR WITH MENU ICON
-    const toolbarContainer = document.getElementById('toolbar-container');
-    if (toolbarContainer) {
-        toolbarContainer.innerHTML = `
-            <div class="toolbar">
-                <div id="menu-container" class="toolbar-menu-container"></div>
-                <button id="fitBoundsBtn">🎯 FIT ALL</button>
-                <button id="heatmapBtn">🔥 SHOW HEATMAP</button>
-                <button id="clearHeatmapBtn">❌ CLEAR HEATMAP</button>
-                <button id="exportGeoJSONBtn">📎 EXPORT GEOJSON</button>
-                <button id="printMapBtn">🖨️ PRINT MAP</button>
-            </div>
-        `;
-    }
+ 
+
+// In renderComponents() - add to toolbar
+const toolbarContainer = document.getElementById('toolbar-container');
+if (toolbarContainer) {
+    toolbarContainer.innerHTML = `
+        <div class="toolbar">
+            <div id="menu-container" class="toolbar-menu-container"></div>
+            ${DBConfig.render()}  <!-- Add DB Config here -->
+            <button id="fitBoundsBtn">🎯 FIT ALL</button>
+            <button id="heatmapBtn">🔥 SHOW HEATMAP</button>
+            <button id="clearHeatmapBtn">❌ CLEAR HEATMAP</button>
+            <button id="exportGeoJSONBtn">📎 EXPORT GEOJSON</button>
+            <button id="printMapBtn">🖨️ PRINT MAP</button>
+        </div>
+    `;
+}
+
+// In initComponents()
+if (DBConfig && typeof DBConfig.init === 'function') {
+    DBConfig.init();
+}
     
     // Add Menu Icon to the toolbar container
     const menuContainer = document.getElementById('menu-container');
