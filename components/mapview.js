@@ -11,6 +11,14 @@ let activeTileLayer = null;
 
 // Initialize map
 function initMap(centerLat = -18.9735, centerLng = 32.6705, zoom = 13) {
+    console.log('initMap called with:', centerLat, centerLng, zoom);
+    
+    const mapElement = document.getElementById('map');
+    if (!mapElement) {
+        console.error('Map element not found!');
+        return null;
+    }
+    
     map = L.map('map').setView([centerLat, centerLng], zoom);
     
     activeTileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -28,11 +36,17 @@ function initMap(centerLat = -18.9735, centerLng = 32.6705, zoom = 13) {
         }
     });
     
+    console.log('Map initialized successfully');
     return map;
 }
 
 // Switch base map
 function switchBaseMap(tileType) {
+    if (!map) {
+        console.error('Map not initialized');
+        return;
+    }
+    
     if (activeTileLayer) {
         map.removeLayer(activeTileLayer);
     }
@@ -54,6 +68,11 @@ function switchBaseMap(tileType) {
 
 // Load manholes (point layer)
 function loadManholes(manholes) {
+    if (!map) {
+        console.error('Map not initialized');
+        return;
+    }
+    
     // Clear existing markers
     for (let i = 0; i < currentMarkers.length; i++) {
         map.removeLayer(currentMarkers[i]);
@@ -93,6 +112,11 @@ function loadManholes(manholes) {
 
 // Load pipelines (line layer)
 function loadPipelines(pipelines) {
+    if (!map) {
+        console.error('Map not initialized');
+        return;
+    }
+    
     // Clear existing lines
     for (let i = 0; i < currentLines.length; i++) {
         map.removeLayer(currentLines[i]);
@@ -127,6 +151,11 @@ function loadPipelines(pipelines) {
 
 // Load suburbs (polygon layer)
 function loadSuburbs(suburbs) {
+    if (!map) {
+        console.error('Map not initialized');
+        return;
+    }
+    
     // Clear existing polygons
     for (let i = 0; i < currentPolygons.length; i++) {
         map.removeLayer(currentPolygons[i]);
@@ -157,7 +186,7 @@ function loadSuburbs(suburbs) {
     }
 }
 
-// Update all layers at once (used when filters change)
+// Update all layers at once
 function updateLayers(manholes, pipelines) {
     loadManholes(manholes);
     loadPipelines(pipelines);
@@ -165,6 +194,11 @@ function updateLayers(manholes, pipelines) {
 
 // Add heatmap
 function addHeatmap(heatPoints) {
+    if (!map) {
+        console.error('Map not initialized');
+        return;
+    }
+    
     if (heatLayer) {
         map.removeLayer(heatLayer);
     }
@@ -180,7 +214,6 @@ function addHeatmap(heatPoints) {
 // Show heatmap from current manholes
 function showHeatmapFromManholes(manholes) {
     if (!manholes || manholes.length === 0) return;
-    
     const heatPoints = manholes.map(m => [m.lat, m.lng, m.blockages || 1]);
     addHeatmap(heatPoints);
 }
@@ -195,6 +228,11 @@ function clearHeatmap() {
 
 // Fit map to show all assets
 function fitToBounds() {
+    if (!map) {
+        console.error('Map not initialized');
+        return;
+    }
+    
     const allPoints = [];
     for (let i = 0; i < currentMarkers.length; i++) {
         const latlng = currentMarkers[i].getLatLng();
@@ -213,7 +251,7 @@ function getMap() {
 }
 
 // ============================================
-// EXPORTS (ES6 MODULE) - THIS IS CRITICAL
+// EXPORTS (ES6 MODULE)
 // ============================================
 
 export default {
