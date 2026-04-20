@@ -17,15 +17,13 @@ let currentFilters = {
     class: 'all',             // pipe classification
     inspector: 'all',         // who inspected
     type: 'all',              // pipe type
-    length_min: 'all',        // minimum length
-    length_max: 'all',        // maximum length
+    length: 'all',            // length range
     start_mh: 'all',          // starting manhole
     end_mh: 'all',            // ending manhole
     
     // ===== MANHOLE FILTERS =====
     manhole_id: 'all',
-    mh_depth_min: 'all',      // minimum depth
-    mh_depth_max: 'all',      // maximum depth
+    mh_depth: 'all',          // depth range
     mh_type: 'all',           // manhole type
     ground_lv: 'all',         // ground level
     inv_lev: 'all',           // invert level
@@ -36,8 +34,8 @@ let currentFilters = {
     suburb_name: 'all',
     township: 'all',          // UTALI, etc.
     ward: 'all',              // ward number
-    op_zone: 'all',          // operational zone
-    short_name: 'all',       // short code (BDV, YVL, WES)
+    op_zone: 'all',           // operational zone
+    short_name: 'all',        // short code (BDV, YVL, WES)
     
     // ===== COMMON FILTERS =====
     search_text: '',          // text search across all fields
@@ -45,54 +43,46 @@ let currentFilters = {
     date_to: 'all'            // inspection date to
 };
 
+// Mock data for testing
+const allManholes = [
+    { id: 1, name: 'MH-001', suburb: 'CBD', diameter: 150, status: 'critical', blockages: 12, lat: -18.9735, lng: 32.6705 },
+    { id: 2, name: 'MH-002', suburb: 'Sakubva', diameter: 100, status: 'warning', blockages: 5, lat: -18.9750, lng: 32.6720 },
+    { id: 3, name: 'MH-003', suburb: 'Dangamvura', diameter: 80, status: 'good', blockages: 3, lat: -18.9780, lng: 32.6750 },
+    { id: 4, name: 'MH-004', suburb: 'CBD', diameter: 120, status: 'critical', blockages: 15, lat: -18.9700, lng: 32.6660 },
+    { id: 5, name: 'MH-005', suburb: 'Chikanga', diameter: 130, status: 'warning', blockages: 7, lat: -18.9650, lng: 32.6600 }
+];
+
+const allPipelines = [
+    { id: 1, name: 'PL-001', status: 'warning', coordinates: [[-18.9735, 32.6705], [-18.9750, 32.6720]] },
+    { id: 2, name: 'PL-002', status: 'good', coordinates: [[-18.9750, 32.6720], [-18.9780, 32.6750]] },
+    { id: 3, name: 'PL-003', status: 'critical', coordinates: [[-18.9735, 32.6705], [-18.9700, 32.6660]] }
+];
+
 // ============================================
 // 2. FILTER OPTIONS (from actual database)
 // ============================================
 
 const filterOptions = {
-    // Pipeline material options
     pipe_materials: ['E/W', 'PVC', 'Concrete', 'Cast Iron', 'Asbestos', 'Clay', 'HDPE', 'Steel'],
-    
-    // Pipe size options (mm)
     pipe_sizes: [50, 75, 100, 150, 200, 250, 300, 375, 450, 525, 600, 750, 900, 1050, 1200],
-    
-    // Blockage status options
     block_statuses: [
         { value: 'blocked', label: 'BLOCKED - Critical', color: '#dc3545' },
         { value: 'partial', label: 'PARTIAL BLOCKAGE - Warning', color: '#ffc107' },
         { value: 'clear', label: 'CLEAR - Good', color: '#28a745' },
         { value: 'unknown', label: 'UNKNOWN - Needs Inspection', color: '#6c757d' }
     ],
-    
-    // Pipe classification
     pipe_classes: ['Primary', 'Secondary', 'Tertiary', 'Trunk', 'Branch', 'Lateral'],
-    
-    // Inspectors
     inspectors: ['John Smith', 'Mary Jones', 'Peter Moyo', 'Tendai Ncube', 'Charles Dube', 'Pending'],
-    
-    // Pipe types
     pipe_types: ['Gravity', 'Force Main', 'Vacuum', 'Siphon', 'Rising Main'],
-    
-    // Manhole types
     manhole_types: ['Standard', 'Deep', 'Drop', 'Access', 'Junction', 'Terminal'],
-    
-    // Suburbs (from database)
     suburbs: ['CBD', 'Sakubva', 'Dangamvura', 'Chikanga', 'Yeovil', 'BORDERVALE 1', 'WESTLEA', 'UTALI'],
-    
-    // Townships
     townships: ['UTALI', 'CBD', 'Sakubva', 'Dangamvura'],
-    
-    // Operational zones
     op_zones: ['TOWN', 'EAST', 'WEST', 'NORTH', 'SOUTH', 'INDUSTRIAL'],
-    
-    // Depth ranges (meters)
     depth_ranges: [
         { value: 'shallow', label: '< 2 m', min: 0, max: 2 },
         { value: 'medium', label: '2 - 4 m', min: 2, max: 4 },
         { value: 'deep', label: '> 4 m', min: 4, max: 100 }
     ],
-    
-    // Length ranges (meters)
     length_ranges: [
         { value: 'short', label: '< 50 m', min: 0, max: 50 },
         { value: 'medium', label: '50 - 100 m', min: 50, max: 100 },
@@ -101,7 +91,35 @@ const filterOptions = {
 };
 
 // ============================================
-// 3. BUILD ACCORDION FILTERS DYNAMICALLY
+// 3. HELPER FUNCTIONS
+// ============================================
+
+function getFilteredManholes() {
+    return allManholes;
+}
+
+function getFilteredPipelines() {
+    return allPipelines;
+}
+
+function getAllManholes() {
+    return allManholes;
+}
+
+function getAllPipelines() {
+    return allPipelines;
+}
+
+function getCurrentFilters() {
+    return currentFilters;
+}
+
+function getFilterOptions() {
+    return filterOptions;
+}
+
+// ============================================
+// 4. BUILD ACCORDION FILTERS DYNAMICALLY
 // ============================================
 
 function buildAccordionFilters() {
@@ -109,7 +127,6 @@ function buildAccordionFilters() {
     if (!container) return;
     
     const filterSections = [
-        // PIPELINE SECTION
         {
             id: 'pipeline',
             title: '📏 WASTE WATER PIPELINE',
@@ -127,8 +144,6 @@ function buildAccordionFilters() {
                 { label: 'End Manhole', type: 'end_mh', inputType: 'text', placeholder: 'End MH...' }
             ]
         },
-        
-        // MANHOLE SECTION
         {
             id: 'manhole',
             title: '🕳️ WASTE WATER MANHOLE',
@@ -142,8 +157,6 @@ function buildAccordionFilters() {
                 { label: 'Inspector', type: 'inspector_mh', options: filterOptions.inspectors }
             ]
         },
-        
-        // SUBURB SECTION
         {
             id: 'suburb',
             title: '🏘️ SUBURBS BOUNDARY',
@@ -156,8 +169,6 @@ function buildAccordionFilters() {
                 { label: 'Short Name', type: 'short_name', inputType: 'text', placeholder: 'Short code (e.g., BDV)...' }
             ]
         },
-        
-        // DATE & SEARCH SECTION
         {
             id: 'general',
             title: '🔍 GENERAL SEARCH',
@@ -175,20 +186,14 @@ function buildAccordionFilters() {
     for (let i = 0; i < filterSections.length; i++) {
         const section = filterSections[i];
         
-        // Main accordion section
         const accordionDiv = document.createElement('div');
         accordionDiv.className = 'accordion-section';
         
-        // Header
         const header = document.createElement('div');
         header.className = 'accordion-header';
         header.setAttribute('data-accordion', section.id);
-        header.innerHTML = `
-            <span>${section.icon} ${section.title}</span>
-            <span class="arrow">▶</span>
-        `;
+        header.innerHTML = `<span>${section.icon} ${section.title}</span><span class="arrow">▶</span>`;
         
-        // Content
         const content = document.createElement('div');
         content.className = 'accordion-content';
         content.setAttribute('data-content', section.id);
@@ -196,7 +201,6 @@ function buildAccordionFilters() {
         const inner = document.createElement('div');
         inner.className = 'accordion-content-inner';
         
-        // Add each filter group
         for (let j = 0; j < section.groups.length; j++) {
             const group = section.groups[j];
             const groupDiv = document.createElement('div');
@@ -211,19 +215,16 @@ function buildAccordionFilters() {
             controlsDiv.className = 'filter-controls';
             
             if (group.options) {
-                // Dropdown/button group
                 const buttonsDiv = document.createElement('div');
                 buttonsDiv.className = 'filter-buttons';
                 buttonsDiv.id = `${group.type}Filters`;
                 
-                // Add ALL button
                 const allBtn = document.createElement('button');
                 allBtn.className = 'filter-btn active';
                 allBtn.setAttribute(`data-${group.type}`, 'all');
                 allBtn.textContent = 'ALL';
                 buttonsDiv.appendChild(allBtn);
                 
-                // Add specific options
                 for (let k = 0; k < group.options.length; k++) {
                     const opt = group.options[k];
                     const btn = document.createElement('button');
@@ -235,25 +236,20 @@ function buildAccordionFilters() {
                     } else {
                         btn.setAttribute(`data-${group.type}`, opt.value);
                         btn.textContent = opt.label;
-                        if (opt.color) {
-                            btn.style.borderLeftColor = opt.color;
-                        }
+                        if (opt.color) btn.style.borderLeftColor = opt.color;
                     }
-                    
                     buttonsDiv.appendChild(btn);
                 }
-                
                 controlsDiv.appendChild(buttonsDiv);
             } else if (group.inputType) {
-                // Text input or date input
                 const input = document.createElement('input');
                 input.type = group.inputType;
                 input.className = 'filter-input';
                 input.placeholder = group.placeholder || '';
                 input.id = `${group.type}Input`;
-                input.addEventListener('input', function() {
-                    updateTextFilter(group.type, this.value);
-                });
+                input.addEventListener('input', function(gt) {
+                    return function(e) { updateTextFilter(gt, e.target.value); };
+                }(group.type));
                 controlsDiv.appendChild(input);
             }
             
@@ -267,7 +263,6 @@ function buildAccordionFilters() {
         container.appendChild(accordionDiv);
     }
     
-    // Open first accordion by default
     const firstHeader = document.querySelector('.accordion-header');
     if (firstHeader) {
         firstHeader.classList.add('active');
@@ -277,7 +272,7 @@ function buildAccordionFilters() {
 }
 
 // ============================================
-// 4. ATTACH EVENTS
+// 5. ATTACH EVENTS
 // ============================================
 
 function attachAccordionEvents() {
@@ -287,189 +282,74 @@ function attachAccordionEvents() {
             const accordionId = this.getAttribute('data-accordion');
             const content = document.querySelector(`.accordion-content[data-content="${accordionId}"]`);
             this.classList.toggle('active');
-            content.classList.toggle('active');
+            if (content) content.classList.toggle('active');
+        });
+    }
+}
+
+function attachButtonFilters(filterType, selector) {
+    const buttons = document.querySelectorAll(selector);
+    for (let i = 0; i < buttons.length; i++) {
+        buttons[i].addEventListener('click', function(ev) {
+            const value = this.getAttribute(`data-${filterType}`);
+            const parentSelector = selector.replace('.filter-btn', '');
+            const allBtns = document.querySelectorAll(parentSelector);
+            for (let j = 0; j < allBtns.length; j++) {
+                allBtns[j].classList.remove('active');
+            }
+            this.classList.add('active');
+            currentFilters[filterType] = value;
+            updateActiveFiltersDisplay();
+            triggerFilterChange();
         });
     }
 }
 
 function attachFilterEvents() {
-    // Pipeline filters
-    attachButtonFilters('pipe_mat', '#pipe_matFilters');
-    attachButtonFilters('pipe_size', '#pipe_sizeFilters');
-    attachButtonFilters('block_stat', '#block_statFilters');
-    attachButtonFilters('class', '#classFilters');
-    attachButtonFilters('inspector', '#inspectorFilters');
-    attachButtonFilters('type', '#typeFilters');
-    attachButtonFilters('length', '#lengthFilters');
-    attachButtonFilters('start_mh', '#start_mhFilters');
-    attachButtonFilters('end_mh', '#end_mhFilters');
-    
-    // Manhole filters
-    attachButtonFilters('manhole_id', '#manhole_idFilters');
-    attachButtonFilters('mh_depth', '#mh_depthFilters');
-    attachButtonFilters('mh_type', '#mh_typeFilters');
-    attachButtonFilters('suburb_nam', '#suburb_namFilters');
-    attachButtonFilters('bloc_stat_mh', '#bloc_stat_mhFilters');
-    
-    // Suburb filters
-    attachButtonFilters('suburb_name', '#suburb_nameFilters');
-    attachButtonFilters('township', '#townshipFilters');
-    attachButtonFilters('op_zone', '#op_zoneFilters');
-    attachButtonFilters('ward', '#wardFilters');
-    attachButtonFilters('short_name', '#short_nameFilters');
-}
-
-function attachButtonFilters(filterType, selector) {
-    const buttons = document.querySelectorAll(`${selector} .filter-btn`);
-    for (let i = 0; i < buttons.length; i++) {
-        buttons[i].addEventListener('click', function() {
-            const value = this.getAttribute(`data-${filterType}`);
-            updateFilter(filterType, value, selector);
-        });
-    }
-}
-
-function updateFilter(filterType, value, selector) {
-    // Update button active states
-    const buttons = document.querySelectorAll(`${selector} .filter-btn`);
-    for (let i = 0; i < buttons.length; i++) {
-        buttons[i].classList.remove('active');
-    }
-    if (event && event.target) {
-        event.target.classList.add('active');
-    }
-    
-    // Update filter state
-    currentFilters[filterType] = value;
-    
-    // Update display
-    updateActiveFiltersDisplay();
-    
-    // Trigger filter change
-    triggerFilterChange();
+    attachButtonFilters('pipe_mat', '#pipe_matFilters .filter-btn');
+    attachButtonFilters('pipe_size', '#pipe_sizeFilters .filter-btn');
+    attachButtonFilters('block_stat', '#block_statFilters .filter-btn');
+    attachButtonFilters('class', '#classFilters .filter-btn');
+    attachButtonFilters('inspector', '#inspectorFilters .filter-btn');
+    attachButtonFilters('type', '#typeFilters .filter-btn');
+    attachButtonFilters('length', '#lengthFilters .filter-btn');
+    attachButtonFilters('suburb_nam', '#suburb_namFilters .filter-btn');
+    attachButtonFilters('mh_depth', '#mh_depthFilters .filter-btn');
+    attachButtonFilters('suburb_name', '#suburb_nameFilters .filter-btn');
+    attachButtonFilters('township', '#townshipFilters .filter-btn');
+    attachButtonFilters('op_zone', '#op_zoneFilters .filter-btn');
 }
 
 function updateTextFilter(filterType, value) {
-    currentFilters[filterType] = value || 'all';
+    currentFilters[filterType] = value || '';
     updateActiveFiltersDisplay();
     triggerFilterChange();
 }
 
 function updateActiveFiltersDisplay() {
     const activeList = [];
-    
-    // Pipeline active filters
-    if (currentFilters.pipe_id !== 'all') activeList.push(`Pipe: ${currentFilters.pipe_id}`);
+    if (currentFilters.pipe_id && currentFilters.pipe_id !== 'all') activeList.push(`Pipe: ${currentFilters.pipe_id}`);
     if (currentFilters.pipe_mat !== 'all') activeList.push(`Material: ${currentFilters.pipe_mat}`);
     if (currentFilters.pipe_size !== 'all') activeList.push(`Size: ${currentFilters.pipe_size}mm`);
     if (currentFilters.block_stat !== 'all') activeList.push(`Status: ${currentFilters.block_stat}`);
-    if (currentFilters.class !== 'all') activeList.push(`Class: ${currentFilters.class}`);
-    if (currentFilters.inspector !== 'all') activeList.push(`Inspector: ${currentFilters.inspector}`);
-    if (currentFilters.type !== 'all') activeList.push(`Type: ${currentFilters.type}`);
-    if (currentFilters.length !== 'all') activeList.push(`Length: ${currentFilters.length}`);
-    
-    // Manhole active filters
-    if (currentFilters.manhole_id !== 'all') activeList.push(`Manhole: ${currentFilters.manhole_id}`);
-    if (currentFilters.mh_depth !== 'all') activeList.push(`Depth: ${currentFilters.mh_depth}`);
-    if (currentFilters.mh_type !== 'all') activeList.push(`MH Type: ${currentFilters.mh_type}`);
     if (currentFilters.suburb_nam !== 'all') activeList.push(`Suburb: ${currentFilters.suburb_nam}`);
-    
-    // Suburb active filters
-    if (currentFilters.suburb_name !== 'all') activeList.push(`Suburb Name: ${currentFilters.suburb_name}`);
-    if (currentFilters.township !== 'all') activeList.push(`Township: ${currentFilters.township}`);
-    if (currentFilters.op_zone !== 'all') activeList.push(`Zone: ${currentFilters.op_zone}`);
-    
-    // Search
-    if (currentFilters.search_text && currentFilters.search_text !== 'all') activeList.push(`Search: ${currentFilters.search_text}`);
-    if (currentFilters.date_from !== 'all') activeList.push(`From: ${currentFilters.date_from}`);
-    if (currentFilters.date_to !== 'all') activeList.push(`To: ${currentFilters.date_to}`);
+    if (currentFilters.search_text) activeList.push(`Search: ${currentFilters.search_text}`);
     
     const activeDiv = document.getElementById('activeFilters');
     if (activeDiv) {
-        if (activeList.length === 0) {
-            activeDiv.innerHTML = 'No active filters (showing all)';
-        } else {
-            activeDiv.innerHTML = activeList.join(' | ');
-        }
+        activeDiv.innerHTML = activeList.length === 0 ? 'No active filters (showing all)' : activeList.join(' | ');
     }
 }
 
 function triggerFilterChange() {
     const event = new CustomEvent('filtersChanged', {
-        detail: { filters: currentFilters }
+        detail: { 
+            filters: currentFilters,
+            manholes: getFilteredManholes(),
+            pipelines: getFilteredPipelines()
+        }
     });
     document.dispatchEvent(event);
-}
-
-// ============================================
-// 5. FILTER LOGIC FOR DATABASE QUERIES
-// ============================================
-
-function buildSQLWhereClause() {
-    const conditions = [];
-    const params = [];
-    let paramCount = 1;
-    
-    // Pipeline conditions
-    if (currentFilters.pipe_id !== 'all') {
-        conditions.push(`pipe_id ILIKE $${paramCount}`);
-        params.push(`%${currentFilters.pipe_id}%`);
-        paramCount++;
-    }
-    if (currentFilters.pipe_mat !== 'all') {
-        conditions.push(`pipe_mat = $${paramCount}`);
-        params.push(currentFilters.pipe_mat);
-        paramCount++;
-    }
-    if (currentFilters.pipe_size !== 'all') {
-        conditions.push(`pipe_size = $${paramCount}`);
-        params.push(parseInt(currentFilters.pipe_size));
-        paramCount++;
-    }
-    if (currentFilters.block_stat !== 'all') {
-        conditions.push(`block_stat = $${paramCount}`);
-        params.push(currentFilters.block_stat);
-        paramCount++;
-    }
-    
-    // Manhole conditions
-    if (currentFilters.manhole_id !== 'all') {
-        conditions.push(`manhole_id ILIKE $${paramCount}`);
-        params.push(`%${currentFilters.manhole_id}%`);
-        paramCount++;
-    }
-    if (currentFilters.suburb_nam !== 'all') {
-        conditions.push(`suburb_nam = $${paramCount}`);
-        params.push(currentFilters.suburb_nam);
-        paramCount++;
-    }
-    
-    // Suburb conditions
-    if (currentFilters.suburb_name !== 'all') {
-        conditions.push(`suburb_name = $${paramCount}`);
-        params.push(currentFilters.suburb_name);
-        paramCount++;
-    }
-    if (currentFilters.township !== 'all') {
-        conditions.push(`township = $${paramCount}`);
-        params.push(currentFilters.township);
-        paramCount++;
-    }
-    
-    // Text search across multiple fields
-    if (currentFilters.search_text && currentFilters.search_text !== 'all' && currentFilters.search_text !== '') {
-        conditions.push(`(
-            pipe_id ILIKE $${paramCount} OR 
-            manhole_id ILIKE $${paramCount} OR 
-            suburb_name ILIKE $${paramCount} OR 
-            inspector ILIKE $${paramCount}
-        )`);
-        params.push(`%${currentFilters.search_text}%`);
-        paramCount++;
-    }
-    
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-    return { whereClause, params };
 }
 
 // ============================================
@@ -477,46 +357,24 @@ function buildSQLWhereClause() {
 // ============================================
 
 function clearAllFilters() {
-    // Reset all filter values
     currentFilters = {
-        pipe_id: 'all',
-        pipe_mat: 'all',
-        pipe_size: 'all',
-        block_stat: 'all',
-        class: 'all',
-        inspector: 'all',
-        type: 'all',
-        length: 'all',
-        start_mh: 'all',
-        end_mh: 'all',
-        manhole_id: 'all',
-        mh_depth: 'all',
-        mh_type: 'all',
-        suburb_nam: 'all',
-        bloc_stat_mh: 'all',
-        suburb_name: 'all',
-        township: 'all',
-        ward: 'all',
-        op_zone: 'all',
-        short_name: 'all',
-        search_text: '',
-        date_from: 'all',
-        date_to: 'all'
+        pipe_id: 'all', pipe_mat: 'all', pipe_size: 'all', block_stat: 'all',
+        class: 'all', inspector: 'all', type: 'all', length: 'all',
+        start_mh: 'all', end_mh: 'all', manhole_id: 'all', mh_depth: 'all',
+        mh_type: 'all', ground_lv: 'all', inv_lev: 'all', suburb_nam: 'all',
+        bloc_stat_mh: 'all', suburb_name: 'all', township: 'all', ward: 'all',
+        op_zone: 'all', short_name: 'all', search_text: '', date_from: 'all', date_to: 'all'
     };
     
-    // Reset all button active states
     const allFilterGroups = document.querySelectorAll('.filter-buttons');
     for (let i = 0; i < allFilterGroups.length; i++) {
         const btns = allFilterGroups[i].querySelectorAll('.filter-btn');
         for (let j = 0; j < btns.length; j++) {
             btns[j].classList.remove('active');
-            if (btns[j].textContent === 'ALL') {
-                btns[j].classList.add('active');
-            }
+            if (btns[j].textContent === 'ALL') btns[j].classList.add('active');
         }
     }
     
-    // Clear text inputs
     const textInputs = document.querySelectorAll('.filter-input');
     for (let i = 0; i < textInputs.length; i++) {
         textInputs[i].value = '';
@@ -527,15 +385,32 @@ function clearAllFilters() {
 }
 
 // ============================================
-// 7. EXPORT FUNCTIONS
+// 7. SQL WHERE CLAUSE BUILDER
 // ============================================
 
-function getCurrentFilters() {
-    return currentFilters;
-}
-
-function getFilterOptions() {
-    return filterOptions;
+function buildSQLWhereClause() {
+    const conditions = [];
+    const params = [];
+    let paramCount = 1;
+    
+    if (currentFilters.pipe_id !== 'all') {
+        conditions.push(`pipe_id ILIKE $${paramCount}`);
+        params.push(`%${currentFilters.pipe_id}%`);
+        paramCount++;
+    }
+    if (currentFilters.pipe_mat !== 'all') {
+        conditions.push(`pipe_mat = $${paramCount}`);
+        params.push(currentFilters.pipe_mat);
+        paramCount++;
+    }
+    if (currentFilters.suburb_nam !== 'all') {
+        conditions.push(`suburb_nam = $${paramCount}`);
+        params.push(currentFilters.suburb_nam);
+        paramCount++;
+    }
+    
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    return { whereClause, params };
 }
 
 // ============================================
@@ -548,18 +423,24 @@ function initFilters() {
     attachFilterEvents();
     updateActiveFiltersDisplay();
     
-    // Clear all button
     const clearBtn = document.getElementById('clearAllFilters');
     if (clearBtn) {
         clearBtn.addEventListener('click', clearAllFilters);
     }
 }
 
-// Export for use in other files
-window.Filters = {
+// ============================================
+// 9. EXPORTS (ES6 MODULE)
+// ============================================
+
+export default {
     init: initFilters,
     getCurrent: getCurrentFilters,
     getOptions: getFilterOptions,
     clearAll: clearAllFilters,
-    buildSQLWhereClause: buildSQLWhereClause
+    buildSQLWhereClause: buildSQLWhereClause,
+    getFilteredManholes: getFilteredManholes,
+    getFilteredPipelines: getFilteredPipelines,
+    getAllManholes: getAllManholes,
+    getAllPipelines: getAllPipelines
 };
