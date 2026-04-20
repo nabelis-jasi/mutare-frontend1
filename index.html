@@ -19,40 +19,84 @@
         body { font-family: 'Segoe UI', monospace; background: #0a1f0a; overflow: hidden; }
         .dashboard { display: flex; height: 100vh; width: 100vw; }
         
-        .left-panel { width: 320px; background: #0d2b0d; border-right: 2px solid forestgreen; display: flex; flex-direction: column; overflow-y: auto; }
+        /* LEFT PANEL */
+        .left-panel { width: 340px; background: #0d2b0d; border-right: 2px solid forestgreen; display: flex; flex-direction: column; overflow-y: auto; }
         .panel-header { padding: 15px; background: #1e3a1e; border-bottom: 2px solid forestgreen; text-align: center; }
         .panel-header h1 { font-size: 1.2em; }
-        .panel-header p { font-size: 0.7em; margin-top: 5px; }
-        .section { padding: 12px; border-bottom: 1px solid #2a4a2a; }
-        .section h3 { font-size: 0.85em; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid forestgreen; }
+        .panel-header p { font-size: 0.7em; margin-top: 5px; opacity: 0.8; }
+        
+        /* ACCORDION STYLES */
+        .accordion-section { border-bottom: 1px solid #2a4a2a; }
+        .accordion-header { 
+            padding: 12px; 
+            cursor: pointer; 
+            background: #1a3a1a;
+            font-weight: bold;
+            font-size: 0.85em;
+            transition: all 0.2s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .accordion-header:hover { background: #2a4a2a; }
+        .accordion-header .arrow { font-size: 1em; transition: transform 0.2s; }
+        .accordion-header.active .arrow { transform: rotate(90deg); }
+        .accordion-content { 
+            max-height: 0; 
+            overflow: hidden; 
+            transition: max-height 0.3s ease-out;
+            background: #0d2b0d;
+        }
+        .accordion-content.active { max-height: 300px; overflow-y: auto; }
+        .accordion-content-inner { padding: 12px; }
         
         .filter-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
-        .filter-btn { background: #1a3a1a; border: 1px solid forestgreen; color: forestgreen; padding: 5px 10px; border-radius: 20px; cursor: pointer; font-size: 0.7em; }
+        .filter-btn { 
+            background: #1a3a1a; 
+            border: 1px solid forestgreen; 
+            color: forestgreen; 
+            padding: 5px 10px; 
+            border-radius: 20px; 
+            cursor: pointer; 
+            font-size: 0.7em; 
+            transition: all 0.2s;
+        }
         .filter-btn:hover { background: #2a4a2a; }
         .filter-btn.active { background: forestgreen; color: #0a1f0a; }
         
-        button { background: #1a3a1a; border: 1px solid forestgreen; color: forestgreen; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 0.75em; }
+        button { 
+            background: #1a3a1a; 
+            border: 1px solid forestgreen; 
+            color: forestgreen; 
+            padding: 6px 10px; 
+            border-radius: 4px; 
+            cursor: pointer; 
+            font-size: 0.75em; 
+            transition: all 0.2s;
+        }
         button:hover { background: forestgreen; color: #0a1f0a; }
         
-        .active-filter { background: #2a4a2a; padding: 6px; border-radius: 4px; margin-top: 8px; font-size: 0.7em; text-align: center; }
+        .active-filter { background: #2a4a2a; padding: 8px; border-radius: 4px; margin-top: 8px; font-size: 0.7em; text-align: center; }
         
+        /* MAIN CONTENT */
         .main-content { flex: 1; display: flex; flex-direction: column; }
         .toolbar { background: #1e3a1e; padding: 8px; display: flex; gap: 6px; flex-wrap: wrap; border-bottom: 1px solid forestgreen; }
         .map-container { flex: 1; background: #0a1f0a; }
         #map { height: 100%; width: 100%; background: #0a1f0a; }
         
-        .right-panel { width: 340px; background: #0d2b0d; border-left: 2px solid forestgreen; display: flex; flex-direction: column; overflow-y: auto; }
+        /* RIGHT PANEL */
+        .right-panel { width: 360px; background: #0d2b0d; border-left: 2px solid forestgreen; display: flex; flex-direction: column; overflow-y: auto; }
         .tabs { display: flex; border-bottom: 1px solid forestgreen; }
-        .tab { flex: 1; padding: 8px; text-align: center; cursor: pointer; background: #1a3a1a; font-weight: bold; font-size: 0.8em; }
+        .tab { flex: 1; padding: 10px; text-align: center; cursor: pointer; background: #1a3a1a; font-weight: bold; font-size: 0.8em; }
         .tab.active { background: forestgreen; color: #0a1f0a; }
         .tab-content { padding: 12px; flex: 1; overflow-y: auto; }
-        .chart-container { margin-bottom: 15px; background: #1a3a1a; border-radius: 4px; padding: 8px; }
+        .chart-container { margin-bottom: 15px; background: #1a3a1a; border-radius: 4px; padding: 10px; }
         .chart-container h4 { margin-bottom: 8px; text-align: center; font-size: 0.8em; }
         canvas { max-height: 160px; width: 100%; }
         .status-bar { background: #1a3a1a; padding: 4px 8px; font-size: 0.65em; border-top: 1px solid forestgreen; }
         .stat-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #2a4a2a; font-size: 0.75em; }
         
-        .layer-list { max-height: 150px; overflow-y: auto; }
+        .layer-buttons { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
         .layer-item { background: #1a3a1a; margin: 4px 0; padding: 6px 8px; border-radius: 4px; border-left: 3px solid forestgreen; display: flex; justify-content: space-between; align-items: center; font-size: 0.8em; }
         
         select { background: #1a3a1a; border: 1px solid forestgreen; color: forestgreen; padding: 4px; border-radius: 4px; }
@@ -64,49 +108,57 @@
 </head>
 <body>
 <div class="dashboard">
+    <!-- LEFT PANEL -->
     <div class="left-panel">
         <div class="panel-header">
-            <h1>MUTARE SEWER ENGINEER</h1>
+            <h1>🌲 MUTARE SEWER ENGINEER</h1>
             <p>Click to Filter | No Query Needed</p>
         </div>
         
-        <div class="section">
-            <h3>FILTER BY SUBURB</h3>
-            <div class="filter-buttons" id="suburbFilters">
-                <button class="filter-btn active" data-suburb="all">ALL</button>
-                <button class="filter-btn" data-suburb="CBD">CBD</button>
-                <button class="filter-btn" data-suburb="Sakubva">SAKUBVA</button>
-                <button class="filter-btn" data-suburb="Dangamvura">DANGAMVURA</button>
-                <button class="filter-btn" data-suburb="Chikanga">CHIKANGA</button>
+        <!-- Filters Container (populated by filters.js) -->
+        <div id="filtersContainer"></div>
+        
+        <!-- Active Filters Display -->
+        <div class="accordion-section">
+            <div class="accordion-header" data-accordion="active">
+                <span>🔍 ACTIVE FILTERS</span>
+                <span class="arrow">▶</span>
+            </div>
+            <div class="accordion-content" data-content="active">
+                <div class="accordion-content-inner">
+                    <div id="activeFilters" class="active-filter">No active filters (showing all)</div>
+                    <button id="clearAllFilters" style="width:100%; margin-top:8px;">CLEAR ALL FILTERS</button>
+                </div>
             </div>
         </div>
         
-        <div class="section">
-            <h3>ACTIVE FILTERS</h3>
-            <div id="activeFilters" class="active-filter">No active filters</div>
-            <button id="clearAllFilters" style="width:100%; margin-top:8px;">CLEAR ALL</button>
-        </div>
-        
-        <div class="section">
-            <h3>MAP LAYERS</h3>
-            <div class="filter-buttons" style="margin-bottom:8px;">
-                <button id="toggleManholesBtn">🕳️ Manholes</button>
-                <button id="togglePipelinesBtn">📏 Pipelines</button>
-                <button id="toggleSuburbsBtn">🏘️ Suburbs</button>
+        <!-- Map Layers Section -->
+        <div class="accordion-section">
+            <div class="accordion-header" data-accordion="layers">
+                <span>🗺️ MAP LAYERS</span>
+                <span class="arrow">▶</span>
             </div>
-            <div class="layer-list">
-                <div class="layer-item">
-                    <span>🗺️ Base Map</span>
-                    <select id="baseMapSelect">
-                        <option value="osm">Street</option>
-                        <option value="satellite">Satellite</option>
-                        <option value="topo">Topographic</option>
-                    </select>
+            <div class="accordion-content" data-content="layers">
+                <div class="accordion-content-inner">
+                    <div class="layer-buttons">
+                        <button id="toggleManholesBtn">🕳️ Manholes</button>
+                        <button id="togglePipelinesBtn">📏 Pipelines</button>
+                        <button id="toggleSuburbsBtn">🏘️ Suburbs</button>
+                    </div>
+                    <div class="layer-item">
+                        <span>🗺️ Base Map</span>
+                        <select id="baseMapSelect">
+                            <option value="osm">Street</option>
+                            <option value="satellite">Satellite</option>
+                            <option value="topo">Topographic</option>
+                        </select>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
     
+    <!-- MAIN CONTENT: MAP -->
     <div class="main-content">
         <div class="toolbar">
             <button id="fitBoundsBtn">🎯 FIT ALL</button>
@@ -123,11 +175,12 @@
         </div>
     </div>
     
+    <!-- RIGHT PANEL: ANALYTICS -->
     <div class="right-panel">
         <div class="tabs">
-            <div class="tab active" data-tab="stats">STATISTICS</div>
-            <div class="tab" data-tab="hotspots">HOTSPOTS</div>
-            <div class="tab" data-tab="reports">REPORTS</div>
+            <div class="tab active" data-tab="stats">📊 STATISTICS</div>
+            <div class="tab" data-tab="hotspots">🔥 HOTSPOTS</div>
+            <div class="tab" data-tab="reports">📄 REPORTS</div>
         </div>
         
         <div id="stats-tab" class="tab-content">
@@ -142,35 +195,33 @@
             <div class="chart-container">
                 <h4>QUICK SUMMARY</h4>
                 <div id="quickSummary">
-                    <div class="stat-row"><span>Total Manholes:</span><span>5</span></div>
-                    <div class="stat-row"><span>Total Pipelines:</span><span>3</span></div>
-                    <div class="stat-row"><span>Critical Assets:</span><span>2</span></div>
+                    <div class="stat-row"><span>Total Manholes:</span><span id="totalManholes">0</span></div>
+                    <div class="stat-row"><span>Total Pipelines:</span><span id="totalPipelines">0</span></div>
+                    <div class="stat-row"><span>Critical Assets:</span><span id="criticalAssets">0</span></div>
+                    <div class="stat-row"><span>Total Blockages:</span><span id="totalBlockages">0</span></div>
                 </div>
             </div>
         </div>
         
         <div id="hotspots-tab" class="tab-content" style="display:none;">
             <div class="chart-container">
-                <h4>PROBLEM ASSETS</h4>
-                <div id="problemAssetsList">
-                    <div class="stat-row">MH-001 - CBD - 12 blockages</div>
-                    <div class="stat-row">MH-004 - CBD - 15 blockages</div>
-                    <div class="stat-row">MH-005 - Chikanga - 7 blockages</div>
-                </div>
+                <h4>PROBLEM ASSETS (Top 5)</h4>
+                <div id="problemAssetsList"></div>
             </div>
         </div>
         
         <div id="reports-tab" class="tab-content" style="display:none;">
             <div class="chart-container">
                 <h4>GENERATE REPORTS</h4>
-                <button id="weeklyReportBtn" style="width:100%; margin-bottom:8px;">WEEKLY PDF</button>
-                <button id="exportCSVBtn" style="width:100%;">EXPORT CSV</button>
+                <button id="weeklyReportBtn" style="width:100%; margin-bottom:8px;">📄 WEEKLY PDF REPORT</button>
+                <button id="exportCSVBtn" style="width:100%;">📎 EXPORT DATA AS CSV</button>
             </div>
         </div>
     </div>
 </div>
 
 <script src="mapview.js"></script>
+<script src="filters.js"></script>
 <script src="script.js"></script>
 </body>
 </html>
