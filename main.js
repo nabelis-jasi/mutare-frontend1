@@ -7,6 +7,8 @@ import MapView from './components/mapview.js';
 import Statistics from './components/statistics.js';
 import Hotspots from './components/hotspots.js';
 import Reports from './components/reports.js';
+import ReportProcessor from './components/reportprocessor.js';
+
 
 // Mock data for testing
 const mockManholes = [
@@ -46,6 +48,19 @@ function renderComponents() {
         headerContainer.innerHTML = Header.render();
         console.log('Header rendered');
     }
+   
+// Add to renderComponents() function
+const reportProcessorContainer = document.getElementById('reportprocessor-container');
+if (reportProcessorContainer && ReportProcessor && ReportProcessor.render) {
+    reportProcessorContainer.innerHTML = ReportProcessor.render();
+    console.log('ReportProcessor rendered');
+}
+
+// Add to initComponents() function
+if (ReportProcessor && typeof ReportProcessor.init === 'function') {
+    console.log('Initializing report processor...');
+    ReportProcessor.init();
+}
     
     // LEFT PANEL - Filters (IMPORTANT: This renders the FILTER button and modal)
     const filtersContainer = document.getElementById('filters-container');
