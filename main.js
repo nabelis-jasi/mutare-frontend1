@@ -8,7 +8,7 @@ import Statistics from './components/statistics.js';
 import Hotspots from './components/hotspots.js';
 import Reports from './components/reports.js';
 
-// Mock data for testing (in case filters don't have data)
+// Mock data for testing
 const mockManholes = [
     { id: 1, name: 'MH-001', suburb: 'CBD', diameter: 150, status: 'critical', blockages: 12, lat: -18.9735, lng: 32.6705 },
     { id: 2, name: 'MH-002', suburb: 'Sakubva', diameter: 100, status: 'warning', blockages: 5, lat: -18.9750, lng: 32.6720 },
@@ -23,7 +23,6 @@ const mockPipelines = [
     { id: 3, name: 'PL-003', status: 'critical', coordinates: [[-18.9735, 32.6705], [-18.9700, 32.6660]] }
 ];
 
-// Log imports to verify they loaded
 console.log('Imports loaded:', {
     Header: !!Header,
     Filters: !!Filters,
@@ -41,29 +40,31 @@ console.log('Imports loaded:', {
 function renderComponents() {
     console.log('Rendering components...');
     
-    // Left Panel
+    // LEFT PANEL
+    // Header
     const headerContainer = document.getElementById('header-container');
     if (headerContainer && Header && Header.render) {
         headerContainer.innerHTML = Header.render();
     }
     
-    // Filters container
-    const filtersContainer = document.getElementById('filters-container');
-    if (filtersContainer) {
-        filtersContainer.innerHTML = '<div id="accordion-filters-container" class="accordion-filters"></div>';
-    }
-    
-    // Layer Manager Container
+    // Layer Manager (Layer List with checkboxes) - LEFT PANEL
     const layermanagerContainer = document.getElementById('layermanager-container');
     if (layermanagerContainer && LayerManager && LayerManager.render) {
         layermanagerContainer.innerHTML = LayerManager.render();
     }
     
-    // Toolbar
+    // Filters (Accordion) - LEFT PANEL
+    const filtersContainer = document.getElementById('filters-container');
+    if (filtersContainer) {
+        filtersContainer.innerHTML = '<div id="accordion-filters-container" class="accordion-filters"></div>';
+    }
+    
+    // TOOLBAR WITH MENU ICON ADDED
     const toolbarContainer = document.getElementById('toolbar-container');
     if (toolbarContainer) {
         toolbarContainer.innerHTML = `
             <div class="toolbar">
+                <div id="menu-container" class="toolbar-menu-container"></div>
                 <button id="fitBoundsBtn">🎯 FIT ALL</button>
                 <button id="heatmapBtn">🔥 SHOW HEATMAP</button>
                 <button id="clearHeatmapBtn">❌ CLEAR HEATMAP</button>
@@ -73,22 +74,25 @@ function renderComponents() {
         `;
     }
     
-    // Map Container - Make sure map div exists
-    const mapContainer = document.getElementById('map-container');
-    if (mapContainer) {
-        // Only set innerHTML if map doesn't already exist
-        if (!document.getElementById('map')) {
-            mapContainer.innerHTML = '<div id="map" style="height: 100%; width: 100%;"></div>';
-        }
+    // Add Menu Icon to the toolbar container
+    const menuContainer = document.getElementById('menu-container');
+    if (menuContainer && LayerManager && LayerManager.renderMenuIcon) {
+        menuContainer.innerHTML = LayerManager.renderMenuIcon();
     }
     
-    // Status Container
+    // MAP CONTAINER
+    const mapContainer = document.getElementById('map-container');
+    if (mapContainer && !document.getElementById('map')) {
+        mapContainer.innerHTML = '<div id="map" style="height: 100%; width: 100%;"></div>';
+    }
+    
+    // STATUS BAR
     const statusContainer = document.getElementById('status-container');
     if (statusContainer) {
-        statusContainer.innerHTML = '<div class="status-bar"><span id="coordStatus">READY | Map loading...</span></div>';
+        statusContainer.innerHTML = '<div class="status-bar"><span id="coordStatus">📍 Ready | Map loaded</span></div>';
     }
     
-    // Right Panel
+    // RIGHT PANEL
     const statisticsContainer = document.getElementById('statistics-container');
     if (statisticsContainer && Statistics && Statistics.render) {
         statisticsContainer.innerHTML = Statistics.render();
@@ -120,7 +124,6 @@ function initComponents() {
         const map = MapView.init(-18.9735, 32.6705, 13);
         if (map) {
             console.log('Map initialized successfully');
-            // Load initial mock data to show something on map
             MapView.loadManholes(mockManholes);
             MapView.loadPipelines(mockPipelines);
         } else {
@@ -138,17 +141,18 @@ function initComponents() {
         console.error('Filters.init is not a function!', Filters);
     }
     
-    // Initialize Layer Manager
+    // Initialize Layer Manager (for layer list and menu dropdown)
     if (LayerManager && typeof LayerManager.init === 'function') {
         console.log('Initializing layer manager...');
         LayerManager.init();
+    } else {
+        console.error('LayerManager.init is not a function!', LayerManager);
     }
     
     // Initialize Statistics
     if (Statistics && typeof Statistics.init === 'function') {
         console.log('Initializing statistics...');
         Statistics.init();
-        // Update statistics with mock data
         Statistics.update(mockManholes, mockPipelines, []);
     }
     
@@ -184,13 +188,10 @@ function setupEventListeners() {
     const heatmapBtn = document.getElementById('heatmapBtn');
     if (heatmapBtn) {
         heatmapBtn.addEventListener('click', () => {
-            // Get manholes from filters or use mock data
             let manholes = mockManholes;
             if (Filters && Filters.getFilteredManholes) {
                 const filtered = Filters.getFilteredManholes();
-                if (filtered && filtered.length > 0) {
-                    manholes = filtered;
-                }
+                if (filtered && filtered.length > 0) manholes = filtered;
             }
             if (MapView && MapView.showHeatmapFromManholes) {
                 MapView.showHeatmapFromManholes(manholes);
@@ -207,9 +208,7 @@ function setupEventListeners() {
     
     const printMapBtn = document.getElementById('printMapBtn');
     if (printMapBtn) {
-        printMapBtn.addEventListener('click', () => {
-            window.print();
-        });
+        printMapBtn.addEventListener('click', () => window.print());
     }
     
     const exportGeoJSONBtn = document.getElementById('exportGeoJSONBtn');
@@ -222,9 +221,7 @@ function setupEventListeners() {
     // Base map switcher
     document.addEventListener('change', function(e) {
         if (e.target && e.target.id === 'baseMapSelect') {
-            if (MapView && MapView.switchBaseMap) {
-                MapView.switchBaseMap(e.target.value);
-            }
+            if (MapView && MapView.switchBaseMap) MapView.switchBaseMap(e.target.value);
         }
     });
     
@@ -232,67 +229,34 @@ function setupEventListeners() {
     document.addEventListener('filtersChanged', (event) => {
         console.log('Filters changed:', event.detail);
         let { manholes, pipelines } = event.detail;
-        
-        // Use mock data if filtered data is empty
         if (!manholes || manholes.length === 0) manholes = mockManholes;
         if (!pipelines || pipelines.length === 0) pipelines = mockPipelines;
         
-        if (MapView && MapView.updateLayers) {
-            MapView.updateLayers(manholes, pipelines);
-        }
-        
-        if (Statistics && Statistics.update) {
-            Statistics.update(manholes, pipelines, []);
-        }
-        
-        if (Hotspots && Hotspots.update) {
-            Hotspots.update(manholes);
-        }
+        if (MapView && MapView.updateLayers) MapView.updateLayers(manholes, pipelines);
+        if (Statistics && Statistics.update) Statistics.update(manholes, pipelines, []);
+        if (Hotspots && Hotspots.update) Hotspots.update(manholes);
     });
     
-    // ============================================
-    // ZOOM TO LOCATION EVENT (from hotspots)
-    // ============================================
+    // Zoom to location event
     document.addEventListener('zoomToLocation', (event) => {
-        console.log('Zoom to location event received:', event.detail);
         const { lat, lng, zoom } = event.detail;
         if (MapView && MapView.getMap) {
             const map = MapView.getMap();
-            if (map && typeof map.setView === 'function') {
-                map.setView([lat, lng], zoom || 18);
-                console.log(`Zoomed to [${lat}, ${lng}] with zoom ${zoom || 18}`);
-            } else {
-                console.error('Map not available for zooming');
-            }
+            if (map && typeof map.setView === 'function') map.setView([lat, lng], zoom || 18);
         }
     });
-}
-
-// ============================================
-// LOAD SAMPLE DATA
-// ============================================
-
-function loadSampleData() {
-    setTimeout(() => {
-        console.log('Loading sample data...');
-        
-        // Update map with mock data
-        if (MapView && MapView.updateLayers) {
-            MapView.updateLayers(mockManholes, mockPipelines);
+    
+    // Listen for layer toggles from LayerManager
+    document.addEventListener('layerToggled', (event) => {
+        const { layerId, visible } = event.detail;
+        console.log(`Layer ${layerId} toggled: ${visible}`);
+        // Re-filter and update map
+        if (Filters && Filters.getFilteredManholes) {
+            const manholes = Filters.getFilteredManholes();
+            const pipelines = Filters.getFilteredPipelines();
+            if (MapView && MapView.updateLayers) MapView.updateLayers(manholes, pipelines);
         }
-        
-        // Update statistics
-        if (Statistics && Statistics.update) {
-            Statistics.update(mockManholes, mockPipelines, []);
-        }
-        
-        // Update hotspots
-        if (Hotspots && Hotspots.update) {
-            Hotspots.update(mockManholes);
-        }
-        
-        console.log('Sample data loaded');
-    }, 1000);
+    });
 }
 
 // ============================================
@@ -302,24 +266,15 @@ function loadSampleData() {
 function init() {
     console.log('Initializing Mutare Sewer Dashboard...');
     
-    // Check if Leaflet is loaded
     if (typeof L === 'undefined') {
-        console.error('Leaflet (L) is not loaded! Check your internet connection and Leaflet CDN.');
-        alert('Leaflet library not loaded. Please check your internet connection and refresh the page.');
-        return;
-    }
-    
-    // Check if map container exists
-    const mapContainer = document.getElementById('map-container');
-    if (!mapContainer) {
-        console.error('Map container element not found!');
+        console.error('Leaflet (L) is not loaded!');
+        alert('Leaflet library not loaded. Please refresh the page.');
         return;
     }
     
     renderComponents();
     initComponents();
     setupEventListeners();
-    loadSampleData();
     
     console.log('Dashboard ready!');
 }
