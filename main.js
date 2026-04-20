@@ -48,19 +48,6 @@ function renderComponents() {
         headerContainer.innerHTML = Header.render();
         console.log('Header rendered');
     }
-   
-// Add to renderComponents() function
-const reportProcessorContainer = document.getElementById('reportprocessor-container');
-if (reportProcessorContainer && ReportProcessor && ReportProcessor.render) {
-    reportProcessorContainer.innerHTML = ReportProcessor.render();
-    console.log('ReportProcessor rendered');
-}
-
-// Add to initComponents() function
-if (ReportProcessor && typeof ReportProcessor.init === 'function') {
-    console.log('Initializing report processor...');
-    ReportProcessor.init();
-}
     
     // LEFT PANEL - Filters (IMPORTANT: This renders the FILTER button and modal)
     const filtersContainer = document.getElementById('filters-container');
@@ -70,6 +57,18 @@ if (ReportProcessor && typeof ReportProcessor.init === 'function') {
     } else {
         console.error('Filters container or render method not found!');
     }
+;
+// In renderComponents() function - add after filters
+const reportProcessorContainer = document.getElementById('reportprocessor-container');
+if (reportProcessorContainer && ReportProcessor && ReportProcessor.render) {
+    reportProcessorContainer.innerHTML = ReportProcessor.render();
+    console.log('ReportProcessor rendered');
+}
+
+// In initComponents() function
+if (ReportProcessor && typeof ReportProcessor.init === 'function') {
+    ReportProcessor.init();
+}
     
     // LEFT PANEL - Layer Manager
     const layermanagerContainer = document.getElementById('layermanager-container');
