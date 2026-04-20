@@ -9,7 +9,7 @@
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     
-    <!-- Leaflet JS (CRITICAL - was missing!) -->
+    <!-- Leaflet JS (MUST be loaded before mapview.js) -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     
     <!-- Leaflet Heatmap Plugin -->
@@ -39,7 +39,9 @@
     <!-- MAIN CONTENT -->
     <div class="main-content">
         <div id="toolbar-container"></div>
-        <div id="map-container"></div>
+        <div id="map-container" style="flex: 1; position: relative; background: #0a1f0a;">
+            <!-- Map will be added here -->
+        </div>
         <div id="status-container"></div>
     </div>
     
