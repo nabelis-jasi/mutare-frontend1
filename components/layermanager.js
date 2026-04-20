@@ -16,6 +16,24 @@ let layerVisibility = {
 };
 
 // ============================================
+// RENDER FUNCTION - Returns HTML for the component
+// ============================================
+
+function render() {
+    return `
+        <div class="section">
+            <h3>🗺️ QGIS MENU</h3>
+            <div id="qgis-menu-bar" class="qgis-menu"></div>
+        </div>
+        <div class="section">
+            <h3>📂 LAYERS</h3>
+            <div id="layer-list" class="layer-list"></div>
+            <button id="addLayerBtn" style="width:100%; margin-top:10px;">+ ADD POSTGIS LAYER</button>
+        </div>
+    `;
+}
+
+// ============================================
 // QGIS MENU BAR
 // ============================================
 
@@ -33,7 +51,10 @@ function initQGISMenu() {
     ];
     
     const menuBar = document.getElementById('qgis-menu-bar');
-    if (!menuBar) return;
+    if (!menuBar) {
+        console.error('qgis-menu-bar element not found');
+        return;
+    }
     
     menuBar.innerHTML = '';
     
@@ -93,7 +114,7 @@ function handleMenuClick(menu, item) {
             alert('Connect to PostgreSQL/PostGIS database');
             break;
         default:
-            alert(menu + ' -> ' + item + ' (Coming soon)');
+            alert(menu + ' -> ' + item);
     }
 }
 
@@ -104,6 +125,11 @@ function handleMenuClick(menu, item) {
 function renderLayerList() {
     const layerList = document.getElementById('layer-list');
     if (!layerList) return;
+    
+    if (availableLayers.length === 0) {
+        layerList.innerHTML = '<div class="layer-item">No layers added</div>';
+        return;
+    }
     
     const layersHtml = availableLayers.map(layer => `
         <div class="layer-item" data-layer="${layer.id}">
@@ -160,6 +186,12 @@ function attachLayerEvents() {
             e.stopPropagation();
         });
     });
+    
+    // Add layer button
+    const addLayerBtn = document.getElementById('addLayerBtn');
+    if (addLayerBtn) {
+        addLayerBtn.addEventListener('click', openAddLayerDialog);
+    }
 }
 
 function toggleLayer(layerId, visible) {
@@ -179,8 +211,7 @@ function toggleLayer(layerId, visible) {
 }
 
 function zoomToLayer(layerId) {
-    alert(`Zoom to ${layerId} layer - Will zoom to extent of features`);
-    // In production, this would get bounds from the layer data
+    alert(`Zoom to ${layerId} layer`);
 }
 
 function changeLayerStyle(layerId) {
@@ -193,27 +224,18 @@ function changeLayerStyle(layerId) {
             }
         }
         alert(`Style for ${layerId} changed to ${newColor}`);
-        // Dispatch event to update map styling
-        const event = new CustomEvent('layerStyleChanged', {
-            detail: { layerId, color: newColor }
-        });
-        document.dispatchEvent(event);
     }
 }
 
 function removeLayer(layerId) {
     if (confirm(`Remove layer "${layerId}" from map?`)) {
-        // Remove from array
         const index = availableLayers.findIndex(l => l.id === layerId);
         if (index !== -1) {
             availableLayers.splice(index, 1);
         }
         delete layerVisibility[layerId];
-        
-        // Re-render layer list
         renderLayerList();
         
-        // Dispatch event to remove from map
         const event = new CustomEvent('layerRemoved', {
             detail: { layerId }
         });
@@ -235,17 +257,8 @@ function openAddLayerDialog() {
         availableLayers.push(newLayer);
         layerVisibility[layerId] = true;
         renderLayerList();
-        
-        alert(`Layer "${layerName}" added. Connect to PostgreSQL to load data.`);
+        alert(`Layer "${layerName}" added.`);
     }
-}
-
-function getLayerVisibility() {
-    return layerVisibility;
-}
-
-function getAvailableLayers() {
-    return availableLayers;
 }
 
 // ============================================
@@ -253,7 +266,6 @@ function getAvailableLayers() {
 // ============================================
 
 function resetProject() {
-    // Reset to default layers
     availableLayers = [
         { id: 'manholes', name: 'waste_water_manhole', type: 'point', visible: true, color: '#28a745' },
         { id: 'pipelines', name: 'waste_water_pipeline', type: 'line', visible: true, color: '#2b7bff' },
@@ -278,7 +290,7 @@ function saveProject() {
         savedAt: new Date().toISOString()
     };
     localStorage.setItem('sewer_project', JSON.stringify(project));
-    alert('Project saved successfully!');
+    alert('Project saved!');
 }
 
 function openProject() {
@@ -289,12 +301,9 @@ function openProject() {
             availableLayers = project.layers;
             layerVisibility = project.visibility;
             renderLayerList();
-            
-            const event = new CustomEvent('projectLoaded', {
-                detail: project
-            });
+            const event = new CustomEvent('projectLoaded', { detail: project });
             document.dispatchEvent(event);
-            alert('Project loaded successfully!');
+            alert('Project loaded!');
         } catch (e) {
             alert('Error loading project');
         }
@@ -304,8 +313,7 @@ function openProject() {
 }
 
 function exportMapAsImage() {
-    alert('Export map as image - Will capture current map view');
-    // In production, this would use html2canvas to capture the map
+    alert('Export map as image');
 }
 
 function toggleFullScreen() {
@@ -317,29 +325,24 @@ function toggleFullScreen() {
 }
 
 // ============================================
-// BASE MAP SWITCHER
-// ============================================
-
-function initBaseMapSwitcher() {
-    const baseMapSelect = document.getElementById('baseMapSelect');
-    if (baseMapSelect) {
-        baseMapSelect.addEventListener('change', function(e) {
-            const event = new CustomEvent('baseMapChanged', {
-                detail: { tileType: e.target.value }
-            });
-            document.dispatchEvent(event);
-        });
-    }
-}
-
-// ============================================
 // INITIALIZATION
 // ============================================
 
 function initLayerManager() {
     renderLayerList();
     initQGISMenu();
-    initBaseMapSwitcher();
+}
+
+// ============================================
+// GETTERS
+// ============================================
+
+function getLayerVisibility() {
+    return layerVisibility;
+}
+
+function getAvailableLayers() {
+    return availableLayers;
 }
 
 // ============================================
@@ -347,7 +350,7 @@ function initLayerManager() {
 // ============================================
 
 export default {
-    render: renderLayerList,
+    render: render,
     init: initLayerManager,
     getLayerVisibility: getLayerVisibility,
     getAvailableLayers: getAvailableLayers,
