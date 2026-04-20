@@ -9,7 +9,7 @@
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     
-    <!-- Leaflet JS (MUST be loaded before mapview.js) -->
+    <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     
     <!-- Leaflet Heatmap Plugin -->
@@ -33,14 +33,17 @@
     <div class="left-panel">
         <div id="header-container"></div>
         <div id="filters-container"></div>
-        <div id="layermanager-container"></div>
+       
     </div>
     
     <!-- MAIN CONTENT -->
     <div class="main-content">
+        <!-- LAYER MANAGER AT THE TOP -->
+        <div id="layermanager-container" class="layermanager-top"></div>
+        
         <div id="toolbar-container"></div>
         <div id="map-container" class="map-container" style="flex: 1; position: relative; background: #0a1f0a;">
-            <!-- Map will be added here by mapview.js -->
+            <div id="map" style="height: 100%; width: 100%;"></div>
         </div>
         <div id="status-container"></div>
     </div>
