@@ -9,7 +9,6 @@ import Hotspots from './components/hotspots.js';
 import Reports from './components/reports.js';
 import ReportProcessor from './components/reportprocessor.js';
 
-
 // Mock data for testing
 const mockManholes = [
     { id: 1, name: 'MH-001', suburb: 'CBD', diameter: 150, status: 'critical', blockages: 12, lat: -18.9735, lng: 32.6705 },
@@ -32,7 +31,8 @@ console.log('Imports loaded:', {
     MapView: !!MapView,
     Statistics: !!Statistics,
     Hotspots: !!Hotspots,
-    Reports: !!Reports
+    Reports: !!Reports,
+    ReportProcessor: !!ReportProcessor
 });
 
 // ============================================
@@ -49,7 +49,14 @@ function renderComponents() {
         console.log('Header rendered');
     }
     
-    // LEFT PANEL - Filters (IMPORTANT: This renders the FILTER button and modal)
+    // LEFT PANEL - Layer Manager
+    const layermanagerContainer = document.getElementById('layermanager-container');
+    if (layermanagerContainer && LayerManager && LayerManager.render) {
+        layermanagerContainer.innerHTML = LayerManager.render();
+        console.log('LayerManager rendered');
+    }
+    
+    // LEFT PANEL - Filters (FILTER button and modal)
     const filtersContainer = document.getElementById('filters-container');
     if (filtersContainer && Filters && Filters.render) {
         filtersContainer.innerHTML = Filters.render();
@@ -57,24 +64,14 @@ function renderComponents() {
     } else {
         console.error('Filters container or render method not found!');
     }
-;
-// In renderComponents() function - add after filters
-const reportProcessorContainer = document.getElementById('reportprocessor-container');
-if (reportProcessorContainer && ReportProcessor && ReportProcessor.render) {
-    reportProcessorContainer.innerHTML = ReportProcessor.render();
-    console.log('ReportProcessor rendered');
-}
-
-// In initComponents() function
-if (ReportProcessor && typeof ReportProcessor.init === 'function') {
-    ReportProcessor.init();
-}
     
-    // LEFT PANEL - Layer Manager
-    const layermanagerContainer = document.getElementById('layermanager-container');
-    if (layermanagerContainer && LayerManager && LayerManager.render) {
-        layermanagerContainer.innerHTML = LayerManager.render();
-        console.log('LayerManager rendered');
+    // LEFT PANEL - Report Processor (BELOW FILTERS)
+    const reportProcessorContainer = document.getElementById('reportprocessor-container');
+    if (reportProcessorContainer && ReportProcessor && ReportProcessor.render) {
+        reportProcessorContainer.innerHTML = ReportProcessor.render();
+        console.log('ReportProcessor rendered');
+    } else {
+        console.error('ReportProcessor container or render method not found!');
     }
     
     // TOOLBAR WITH MENU ICON
@@ -151,12 +148,20 @@ function initComponents() {
         console.error('MapView.init is not a function!', MapView);
     }
     
-    // Initialize Filters (THIS ATTACHES THE CLICK EVENT TO THE FILTER BUTTON)
+    // Initialize Filters (attaches click event to FILTER button)
     if (Filters && typeof Filters.init === 'function') {
-        console.log('Initializing filters - this attaches the click event to the FILTER button');
+        console.log('Initializing filters...');
         Filters.init();
     } else {
         console.error('Filters.init is not a function!', Filters);
+    }
+    
+    // Initialize Report Processor (attaches click event to PROCESS REPORT button)
+    if (ReportProcessor && typeof ReportProcessor.init === 'function') {
+        console.log('Initializing report processor...');
+        ReportProcessor.init();
+    } else {
+        console.error('ReportProcessor.init is not a function!', ReportProcessor);
     }
     
     // Initialize Layer Manager
@@ -295,6 +300,7 @@ function init() {
     
     console.log('Dashboard ready!');
     console.log('Click the "🔍 FILTER" button in the left panel to open the filter modal');
+    console.log('Click the "🔍 PROCESS REPORT" button to process daily reports');
 }
 
 // Start the application
