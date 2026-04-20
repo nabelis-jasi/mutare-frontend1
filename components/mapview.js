@@ -213,7 +213,7 @@ function getMap() {
 }
 
 // ============================================
-// EXPORTS (ES6 MODULE)
+// EXPORTS (ES6 MODULE) - THIS IS CRITICAL
 // ============================================
 
 export default {
