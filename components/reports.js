@@ -26,6 +26,12 @@ const mockJobLogs = [
 ];
 
 // ============================================
+// CONSTANTS
+// ============================================
+
+const LOGO_URL = 'https://upload.wikimedia.org/wikipedia/commons/a/a0/Mutare_City_logo_2023.png';
+
+// ============================================
 // HELPER FUNCTIONS
 // ============================================
 
@@ -50,7 +56,43 @@ function downloadFile(content, filename, mimeType) {
 }
 
 // ============================================
-// PDF GENERATION
+// PDF LOGO FUNCTION
+// ============================================
+
+function addLogoToPDF(doc, callback) {
+    const img = new Image();
+    img.crossOrigin = 'Anonymous';
+    img.src = LOGO_URL;
+    
+    img.onload = function() {
+        try {
+            // Add logo at top-left corner
+            doc.addImage(img, 'PNG', 15, 8, 25, 25);
+        } catch(e) {
+            console.warn('Could not add image to PDF, using text fallback');
+            doc.setFontSize(14);
+            doc.setTextColor(34, 139, 34);
+            doc.text('CITY OF MUTARE', 20, 25);
+        }
+        if (callback) callback();
+    };
+    
+    img.onerror = function() {
+        console.warn('Logo image failed to load from URL, using text fallback');
+        doc.setFontSize(14);
+        doc.setTextColor(34, 139, 34);
+        doc.text('CITY OF MUTARE', 20, 25);
+        if (callback) callback();
+    };
+    
+    // If image already loaded
+    if (img.complete) {
+        img.onload();
+    }
+}
+
+// ============================================
+// PDF GENERATION WITH LOGO
 // ============================================
 
 function generatePipelineReport() {
@@ -58,28 +100,47 @@ function generatePipelineReport() {
     const doc = new jsPDF('landscape');
     const data = getCurrentData();
     
-    doc.setFontSize(20);
-    doc.setTextColor(34, 139, 34);
-    doc.text('Mutare City Council', 20, 20);
-    doc.setFontSize(16);
-    doc.text('Waste Water Pipeline Report', 20, 35);
-    doc.setFontSize(10);
-    doc.setTextColor(100, 100, 100);
-    doc.text(`Generated: ${new Date().toLocaleString()}`, 20, 45);
-    doc.text(`Total Pipelines: ${data.pipelines.length}`, 20, 52);
-    
-    const tableData = [['Pipe ID', 'Start MH', 'End MH', 'Material', 'Size', 'Status', 'Length', 'Latitude', 'Longitude']];
-    data.pipelines.forEach(p => {
-        tableData.push([
-            p.pipe_id || '—', p.start_mh || '—', p.end_mh || '—', p.pipe_mat || '—',
-            p.pipe_size || '—', p.block_stat || 'Normal', p.length ? p.length.toFixed(2) : '—',
-            p.lat ? p.lat.toFixed(6) : '—', p.lng ? p.lng.toFixed(6) : '—'
-        ]);
+    // Add logo asynchronously, then generate content
+    addLogoToPDF(doc, () => {
+        // Header
+        doc.setFontSize(20);
+        doc.setTextColor(34, 139, 34);
+        doc.text('Mutare City Council', 50, 20);
+        
+        doc.setFontSize(16);
+        doc.text('Waste Water Pipeline Report', 50, 32);
+        
+        doc.setFontSize(10);
+        doc.setTextColor(100, 100, 100);
+        doc.text(`Generated: ${new Date().toLocaleString()}`, 50, 42);
+        doc.text(`Total Pipelines: ${data.pipelines.length}`, 50, 49);
+        
+        const tableData = [['Pipe ID', 'Start MH', 'End MH', 'Material', 'Size', 'Status', 'Length', 'Latitude', 'Longitude']];
+        data.pipelines.forEach(p => {
+            tableData.push([
+                p.pipe_id || '—', p.start_mh || '—', p.end_mh || '—', p.pipe_mat || '—',
+                p.pipe_size || '—', p.block_stat || 'Normal', p.length ? p.length.toFixed(2) : '—',
+                p.lat ? p.lat.toFixed(6) : '—', p.lng ? p.lng.toFixed(6) : '—'
+            ]);
+        });
+        
+        doc.autoTable({ 
+            startY: 58, 
+            head: [tableData[0]], 
+            body: tableData.slice(1), 
+            theme: 'striped',
+            headStyles: { fillColor: [34, 139, 34], textColor: [255, 255, 255] } 
+        });
+        
+        // Footer
+        const finalY = doc.lastAutoTable.finalY + 10;
+        doc.setFontSize(8);
+        doc.setTextColor(34, 139, 34);
+        doc.text('Mutare City Council - Sewer Management Department', 20, finalY);
+        doc.text(`Report ID: PIPE-${new Date().toISOString().slice(0,10).replace(/-/g, '')}`, 20, finalY + 5);
+        
+        doc.save(`pipeline_report_${new Date().toISOString().slice(0,10)}.pdf`);
     });
-    
-    doc.autoTable({ startY: 60, head: [tableData[0]], body: tableData.slice(1), theme: 'striped',
-        headStyles: { fillColor: [34, 139, 34], textColor: [255, 255, 255] } });
-    doc.save(`pipeline_report_${new Date().toISOString().slice(0,10)}.pdf`);
 }
 
 function generateManholeReport() {
@@ -87,27 +148,42 @@ function generateManholeReport() {
     const doc = new jsPDF('landscape');
     const data = getCurrentData();
     
-    doc.setFontSize(20);
-    doc.setTextColor(34, 139, 34);
-    doc.text('Mutare City Council', 20, 20);
-    doc.setFontSize(16);
-    doc.text('Waste Water Manhole Report', 20, 35);
-    doc.setFontSize(10);
-    doc.text(`Generated: ${new Date().toLocaleString()}`, 20, 45);
-    doc.text(`Total Manholes: ${data.manholes.length}`, 20, 52);
-    
-    const tableData = [['ID', 'Depth', 'Pipe ID', 'Status', 'Type', 'Suburb', 'Inspector', 'Latitude', 'Longitude']];
-    data.manholes.forEach(m => {
-        tableData.push([
-            m.manhole_id || '—', m.mh_depth ? m.mh_depth + 'm' : '—', m.pipe_id || '—',
-            m.bloc_stat || 'Normal', m.type || '—', m.suburb_nam || '—', m.inspector || '—',
-            m.lat ? m.lat.toFixed(6) : '—', m.lng ? m.lng.toFixed(6) : '—'
-        ]);
+    addLogoToPDF(doc, () => {
+        doc.setFontSize(20);
+        doc.setTextColor(34, 139, 34);
+        doc.text('Mutare City Council', 50, 20);
+        doc.setFontSize(16);
+        doc.text('Waste Water Manhole Report', 50, 32);
+        doc.setFontSize(10);
+        doc.setTextColor(100, 100, 100);
+        doc.text(`Generated: ${new Date().toLocaleString()}`, 50, 42);
+        doc.text(`Total Manholes: ${data.manholes.length}`, 50, 49);
+        
+        const tableData = [['ID', 'Depth', 'Pipe ID', 'Status', 'Type', 'Suburb', 'Inspector', 'Latitude', 'Longitude']];
+        data.manholes.forEach(m => {
+            tableData.push([
+                m.manhole_id || '—', m.mh_depth ? m.mh_depth + 'm' : '—', m.pipe_id || '—',
+                m.bloc_stat || 'Normal', m.type || '—', m.suburb_nam || '—', m.inspector || '—',
+                m.lat ? m.lat.toFixed(6) : '—', m.lng ? m.lng.toFixed(6) : '—'
+            ]);
+        });
+        
+        doc.autoTable({ 
+            startY: 58, 
+            head: [tableData[0]], 
+            body: tableData.slice(1), 
+            theme: 'striped',
+            headStyles: { fillColor: [34, 139, 34], textColor: [255, 255, 255] } 
+        });
+        
+        const finalY = doc.lastAutoTable.finalY + 10;
+        doc.setFontSize(8);
+        doc.setTextColor(34, 139, 34);
+        doc.text('Mutare City Council - Sewer Management Department', 20, finalY);
+        doc.text(`Report ID: MH-${new Date().toISOString().slice(0,10).replace(/-/g, '')}`, 20, finalY + 5);
+        
+        doc.save(`manhole_report_${new Date().toISOString().slice(0,10)}.pdf`);
     });
-    
-    doc.autoTable({ startY: 60, head: [tableData[0]], body: tableData.slice(1), theme: 'striped',
-        headStyles: { fillColor: [34, 139, 34], textColor: [255, 255, 255] } });
-    doc.save(`manhole_report_${new Date().toISOString().slice(0,10)}.pdf`);
 }
 
 function generateJobLogReport() {
@@ -115,41 +191,49 @@ function generateJobLogReport() {
     const doc = new jsPDF('landscape');
     const data = getCurrentData();
     
-    doc.setFontSize(20);
-    doc.setTextColor(34, 139, 34);
-    doc.text('Mutare City Council', 20, 20);
-    doc.setFontSize(16);
-    doc.text('Sewer Job Log Report', 20, 35);
-    doc.setFontSize(10);
-    doc.text(`Generated: ${new Date().toLocaleString()}`, 20, 45);
-    
-    const tableData = [['Job #', 'Asset ID', 'Type', 'Description', 'Priority', 'Status', 'Assigned To', 'Hours', 'Latitude', 'Longitude', 'Suburb']];
-    data.jobLogs.forEach(j => {
-        tableData.push([
-            j.job_number || '—', j.asset_id || '—', j.asset_type || '—',
-            (j.description || '').substring(0, 25), j.priority || '—', j.status || '—',
-            j.assigned_to || '—', j.resolution_hours || '—',
-            j.lat ? j.lat.toFixed(6) : '—', j.lng ? j.lng.toFixed(6) : '—', j.suburb || '—'
-        ]);
+    addLogoToPDF(doc, () => {
+        doc.setFontSize(20);
+        doc.setTextColor(34, 139, 34);
+        doc.text('Mutare City Council', 50, 20);
+        doc.setFontSize(16);
+        doc.text('Sewer Job Log Report', 50, 32);
+        doc.setFontSize(10);
+        doc.setTextColor(100, 100, 100);
+        doc.text(`Generated: ${new Date().toLocaleString()}`, 50, 42);
+        
+        const tableData = [['Job #', 'Asset ID', 'Type', 'Description', 'Priority', 'Status', 'Assigned To', 'Hours', 'Latitude', 'Longitude', 'Suburb']];
+        data.jobLogs.forEach(j => {
+            tableData.push([
+                j.job_number || '—', j.asset_id || '—', j.asset_type || '—',
+                (j.description || '').substring(0, 25), j.priority || '—', j.status || '—',
+                j.assigned_to || '—', j.resolution_hours || '—',
+                j.lat ? j.lat.toFixed(6) : '—', j.lng ? j.lng.toFixed(6) : '—', j.suburb || '—'
+            ]);
+        });
+        
+        doc.autoTable({ 
+            startY: 50, 
+            head: [tableData[0]], 
+            body: tableData.slice(1), 
+            theme: 'striped',
+            headStyles: { fillColor: [34, 139, 34], textColor: [255, 255, 255] } 
+        });
+        
+        const finalY = doc.lastAutoTable.finalY + 10;
+        const completed = data.jobLogs.filter(j => j.status === 'completed').length;
+        const inProgress = data.jobLogs.filter(j => j.status === 'in_progress').length;
+        const pending = data.jobLogs.filter(j => j.status === 'pending').length;
+        
+        doc.setFontSize(10);
+        doc.setTextColor(34, 139, 34);
+        doc.text('Summary', 20, finalY);
+        doc.setTextColor(50, 50, 50);
+        doc.text(`✓ Completed: ${completed}`, 20, finalY + 7);
+        doc.text(`🔄 In Progress: ${inProgress}`, 20, finalY + 14);
+        doc.text(`⏳ Pending: ${pending}`, 20, finalY + 21);
+        
+        doc.save(`joblog_report_${new Date().toISOString().slice(0,10)}.pdf`);
     });
-    
-    doc.autoTable({ startY: 55, head: [tableData[0]], body: tableData.slice(1), theme: 'striped',
-        headStyles: { fillColor: [34, 139, 34], textColor: [255, 255, 255] } });
-    
-    const finalY = doc.lastAutoTable.finalY + 10;
-    const completed = data.jobLogs.filter(j => j.status === 'completed').length;
-    const inProgress = data.jobLogs.filter(j => j.status === 'in_progress').length;
-    const pending = data.jobLogs.filter(j => j.status === 'pending').length;
-    
-    doc.setFontSize(10);
-    doc.setTextColor(34, 139, 34);
-    doc.text('Summary', 20, finalY);
-    doc.setTextColor(50, 50, 50);
-    doc.text(`✓ Completed: ${completed}`, 20, finalY + 7);
-    doc.text(`🔄 In Progress: ${inProgress}`, 20, finalY + 14);
-    doc.text(`⏳ Pending: ${pending}`, 20, finalY + 21);
-    
-    doc.save(`joblog_report_${new Date().toISOString().slice(0,10)}.pdf`);
 }
 
 // ============================================
@@ -237,19 +321,6 @@ function exportJobLogGeoJSON() {
 }
 
 // ============================================
-// ACCORDION TOGGLE
-// ============================================
-
-function toggleAccordion(sectionId) {
-    const content = document.getElementById(sectionId);
-    const header = content?.previousElementSibling;
-    if (content && header) {
-        content.classList.toggle('active');
-        header.classList.toggle('active');
-    }
-}
-
-// ============================================
 // ATTACH EVENTS
 // ============================================
 
@@ -264,28 +335,48 @@ function attachEvents() {
     });
     
     // PDF buttons
-    document.getElementById('pipelineReportBtn')?.addEventListener('click', generatePipelineReport);
-    document.getElementById('manholeReportBtn')?.addEventListener('click', generateManholeReport);
-    document.getElementById('jobLogReportBtn')?.addEventListener('click', generateJobLogReport);
+    const pipelineBtn = document.getElementById('pipelineReportBtn');
+    if (pipelineBtn) pipelineBtn.addEventListener('click', generatePipelineReport);
+    
+    const manholeBtn = document.getElementById('manholeReportBtn');
+    if (manholeBtn) manholeBtn.addEventListener('click', generateManholeReport);
+    
+    const jobLogBtn = document.getElementById('jobLogReportBtn');
+    if (jobLogBtn) jobLogBtn.addEventListener('click', generateJobLogReport);
     
     // CSV buttons
-    document.getElementById('exportPipelinesCSV')?.addEventListener('click', exportPipelinesCSV);
-    document.getElementById('exportManholesCSV')?.addEventListener('click', exportManholesCSV);
-    document.getElementById('exportJobLogCSV')?.addEventListener('click', exportJobLogCSV);
+    const exportPipeCSV = document.getElementById('exportPipelinesCSV');
+    if (exportPipeCSV) exportPipeCSV.addEventListener('click', exportPipelinesCSV);
+    
+    const exportMhCSV = document.getElementById('exportManholesCSV');
+    if (exportMhCSV) exportMhCSV.addEventListener('click', exportManholesCSV);
+    
+    const exportJobCSV = document.getElementById('exportJobLogCSV');
+    if (exportJobCSV) exportJobCSV.addEventListener('click', exportJobLogCSV);
     
     // JSON buttons
-    document.getElementById('exportPipelinesJSON')?.addEventListener('click', exportPipelinesJSON);
-    document.getElementById('exportManholesJSON')?.addEventListener('click', exportManholesJSON);
-    document.getElementById('exportJobLogJSON')?.addEventListener('click', exportJobLogJSON);
+    const exportPipeJSON = document.getElementById('exportPipelinesJSON');
+    if (exportPipeJSON) exportPipeJSON.addEventListener('click', exportPipelinesJSON);
+    
+    const exportMhJSON = document.getElementById('exportManholesJSON');
+    if (exportMhJSON) exportMhJSON.addEventListener('click', exportManholesJSON);
+    
+    const exportJobJSON = document.getElementById('exportJobLogJSON');
+    if (exportJobJSON) exportJobJSON.addEventListener('click', exportJobLogJSON);
     
     // SHP (GeoJSON) buttons
-    document.getElementById('exportPipelinesSHP')?.addEventListener('click', exportPipelinesGeoJSON);
-    document.getElementById('exportManholesSHP')?.addEventListener('click', exportManholesGeoJSON);
-    document.getElementById('exportJobLogSHP')?.addEventListener('click', exportJobLogGeoJSON);
+    const exportPipeSHP = document.getElementById('exportPipelinesSHP');
+    if (exportPipeSHP) exportPipeSHP.addEventListener('click', exportPipelinesGeoJSON);
+    
+    const exportMhSHP = document.getElementById('exportManholesSHP');
+    if (exportMhSHP) exportMhSHP.addEventListener('click', exportManholesGeoJSON);
+    
+    const exportJobSHP = document.getElementById('exportJobLogSHP');
+    if (exportJobSHP) exportJobSHP.addEventListener('click', exportJobLogGeoJSON);
 }
 
 // ============================================
-// RENDER HTML (With "SEWER REPORTS" Main Heading)
+// RENDER HTML
 // ============================================
 
 function render() {
@@ -296,7 +387,6 @@ function render() {
     
     return `
         <div class="reports-container">
-            <!-- MAIN HEADING -->
             <div class="reports-main-header">
                 <h3>📑 SEWER REPORTS</h3>
                 <p>Generate and export sewer asset reports in multiple formats</p>
@@ -370,6 +460,7 @@ function render() {
 
 function init() {
     attachEvents();
+    console.log('Reports component initialized with online logo');
 }
 
 function updateReports(pipelines, manholes, jobLogs) {
