@@ -1,5 +1,7 @@
 // components/hotspots.js - Advanced Spatial Analysis Component
 // Includes: Cascading drill-down, click-to-zoom, detailed asset view
+// Note: This component receives data via update(manholes) from main.js (which now fetches from backend API)
+// All spatial calculations are performed client-side on the provided data.
 
 // ============================================
 // STATE MANAGEMENT
