@@ -1,6 +1,13 @@
 // components/filters.js - Enhanced Filter with Modal Popup
 // Includes: Suburb, Diameter, Material, Status, Pipe Size, Depth Range, Date Range, Inspector, Block Status, Priority
 
+// ============================================
+// API CONFIGURATION (adjust to your backend URL)
+// ============================================
+const API_BASE_URL = window.location.hostname === 'localhost'
+  ? 'http://localhost:5000/api'
+  : 'https://mutare-backend.onrender.com/api';  // change to your deployed backend
+
 let currentFilters = {
     // Location filters
     suburb: 'all',
@@ -38,23 +45,10 @@ let currentFilters = {
     selected_materials: []
 };
 
-// Mock data
-const allManholes = [
-    { id: 1, name: 'MH-001', suburb: 'CBD', township: 'Central', ward: 1, op_zone: 'A', diameter: 150, material: 'concrete', status: 'critical', block_status: 'blocked', priority: 'high', inspector: 'John Smith', blockages: 12, lat: -18.9735, lng: 32.6705, last_inspected: '2024-03-15', depth: 3.5 },
-    { id: 2, name: 'MH-002', suburb: 'Sakubva', township: 'East', ward: 2, op_zone: 'B', diameter: 100, material: 'PVC', status: 'warning', block_status: 'partial', priority: 'medium', inspector: 'Mary Jones', blockages: 5, lat: -18.9750, lng: 32.6720, last_inspected: '2024-02-10', depth: 2.8 },
-    { id: 3, name: 'MH-003', suburb: 'Dangamvura', township: 'West', ward: 3, op_zone: 'C', diameter: 80, material: 'asbestos', status: 'good', block_status: 'clear', priority: 'low', inspector: 'Peter Moyo', blockages: 3, lat: -18.9780, lng: 32.6750, last_inspected: '2024-01-20', depth: 2.2 },
-    { id: 4, name: 'MH-004', suburb: 'CBD', township: 'Central', ward: 1, op_zone: 'A', diameter: 120, material: 'concrete', status: 'critical', block_status: 'blocked', priority: 'urgent', inspector: 'John Smith', blockages: 15, lat: -18.9700, lng: 32.6660, last_inspected: '2024-03-01', depth: 4.0 },
-    { id: 5, name: 'MH-005', suburb: 'Chikanga', township: 'North', ward: 4, op_zone: 'D', diameter: 130, material: 'concrete', status: 'warning', block_status: 'partial', priority: 'high', inspector: 'Tendai Ncube', blockages: 7, lat: -18.9650, lng: 32.6600, last_inspected: '2024-02-25', depth: 3.0 },
-    { id: 6, name: 'MH-006', suburb: 'Yeovil', township: 'South', ward: 5, op_zone: 'E', diameter: 90, material: 'clay', status: 'good', block_status: 'clear', priority: 'low', inspector: 'Mary Jones', blockages: 2, lat: -18.9680, lng: 32.6550, last_inspected: '2024-03-10', depth: 2.5 }
-];
+// ============================================
+// Filter options (unchanged – used only for UI)
+// ============================================
 
-const allPipelines = [
-    { id: 1, name: 'PL-001', pipe_id: '13373', pipe_mat: 'E/W', pipe_size: 150, block_stat: 'partial', class: 'Primary', inspector: 'John Smith', status: 'warning', length: 4.35, coordinates: [[-18.9735, 32.6705], [-18.9750, 32.6720]] },
-    { id: 2, name: 'PL-002', pipe_id: '36047', pipe_mat: 'PVC', pipe_size: 200, block_stat: 'clear', class: 'Secondary', inspector: 'Mary Jones', status: 'good', length: 12.5, coordinates: [[-18.9750, 32.6720], [-18.9780, 32.6750]] },
-    { id: 3, name: 'PL-003', pipe_id: '45218', pipe_mat: 'Concrete', pipe_size: 300, block_stat: 'blocked', class: 'Trunk', inspector: 'Peter Moyo', status: 'critical', length: 25.8, coordinates: [[-18.9735, 32.6705], [-18.9700, 32.6660]] }
-];
-
-// Filter options
 const filterOptions = {
     suburbs: ['CBD', 'Sakubva', 'Dangamvura', 'Chikanga', 'Yeovil', 'Bordervale', 'Westlea', 'Hillside'],
     townships: ['Central', 'East', 'West', 'North', 'South'],
@@ -80,135 +74,82 @@ const filterOptions = {
 };
 
 // ============================================
-// FILTER FUNCTIONS
+// FILTER FUNCTIONS (NOW USE BACKEND API)
 // ============================================
 
-function getFilteredManholes() {
-    let filtered = [...allManholes];
+async function getFilteredManholes() {
+    // Build query parameters from currentFilters
+    const params = new URLSearchParams();
+    if (currentFilters.suburb !== 'all') params.append('suburb', currentFilters.suburb);
+    if (currentFilters.township !== 'all') params.append('township', currentFilters.township);
+    if (currentFilters.ward !== 'all') params.append('ward', currentFilters.ward);
+    if (currentFilters.op_zone !== 'all') params.append('op_zone', currentFilters.op_zone);
     
-    // Location filters
-    if (currentFilters.suburb !== 'all') {
-        filtered = filtered.filter(m => m.suburb === currentFilters.suburb);
-    }
-    if (currentFilters.township !== 'all') {
-        filtered = filtered.filter(m => m.township === currentFilters.township);
-    }
-    if (currentFilters.ward !== 'all') {
-        filtered = filtered.filter(m => m.ward == currentFilters.ward);
-    }
-    if (currentFilters.op_zone !== 'all') {
-        filtered = filtered.filter(m => m.op_zone === currentFilters.op_zone);
-    }
+    if (currentFilters.diameter !== 'all') params.append('diameter', currentFilters.diameter);
+    if (currentFilters.diameter_min) params.append('diameter_min', currentFilters.diameter_min);
+    if (currentFilters.diameter_max) params.append('diameter_max', currentFilters.diameter_max);
+    if (currentFilters.material !== 'all') params.append('material', currentFilters.material);
+    if (currentFilters.depth_range !== 'all') params.append('depth_range', currentFilters.depth_range);
     
-    // Physical filters
-    if (currentFilters.diameter !== 'all') {
-        filtered = filtered.filter(m => {
-            if (currentFilters.diameter === 'small') return m.diameter < 100;
-            if (currentFilters.diameter === 'medium') return m.diameter >= 100 && m.diameter <= 150;
-            if (currentFilters.diameter === 'large') return m.diameter > 150;
-            return true;
-        });
-    }
-    if (currentFilters.diameter_min) {
-        filtered = filtered.filter(m => m.diameter >= parseInt(currentFilters.diameter_min));
-    }
-    if (currentFilters.diameter_max) {
-        filtered = filtered.filter(m => m.diameter <= parseInt(currentFilters.diameter_max));
-    }
-    if (currentFilters.material !== 'all') {
-        filtered = filtered.filter(m => m.material === currentFilters.material);
-    }
-    if (currentFilters.depth_range !== 'all') {
-        filtered = filtered.filter(m => {
-            if (currentFilters.depth_range === 'shallow') return m.depth < 2;
-            if (currentFilters.depth_range === 'medium') return m.depth >= 2 && m.depth <= 4;
-            if (currentFilters.depth_range === 'deep') return m.depth > 4;
-            return true;
-        });
-    }
+    if (currentFilters.status !== 'all') params.append('status', currentFilters.status);
+    if (currentFilters.block_status !== 'all') params.append('block_status', currentFilters.block_status);
+    if (currentFilters.priority !== 'all') params.append('priority', currentFilters.priority);
     
-    // Status filters
-    if (currentFilters.status !== 'all') {
-        filtered = filtered.filter(m => m.status === currentFilters.status);
-    }
-    if (currentFilters.block_status !== 'all') {
-        filtered = filtered.filter(m => m.block_status === currentFilters.block_status);
-    }
-    if (currentFilters.priority !== 'all') {
-        filtered = filtered.filter(m => m.priority === currentFilters.priority);
-    }
+    if (currentFilters.inspector !== 'all') params.append('inspector', currentFilters.inspector);
     
-    // Personnel filters
-    if (currentFilters.inspector !== 'all') {
-        filtered = filtered.filter(m => m.inspector === currentFilters.inspector);
-    }
+    if (currentFilters.date_from) params.append('date_from', currentFilters.date_from);
+    if (currentFilters.date_to) params.append('date_to', currentFilters.date_to);
     
-    // Date filters
-    if (currentFilters.date_from) {
-        filtered = filtered.filter(m => m.last_inspected >= currentFilters.date_from);
-    }
-    if (currentFilters.date_to) {
-        filtered = filtered.filter(m => m.last_inspected <= currentFilters.date_to);
-    }
+    if (currentFilters.search_text) params.append('search', currentFilters.search_text);
     
-    // Text search
-    if (currentFilters.search_text) {
-        const search = currentFilters.search_text.toLowerCase();
-        filtered = filtered.filter(m => 
-            m.name.toLowerCase().includes(search) ||
-            m.suburb.toLowerCase().includes(search) ||
-            m.material.toLowerCase().includes(search)
-        );
-    }
+    if (currentFilters.selected_suburbs.length) params.append('selected_suburbs', currentFilters.selected_suburbs.join(','));
+    if (currentFilters.selected_materials.length) params.append('selected_materials', currentFilters.selected_materials.join(','));
     
-    // Multiple selection filters
-    if (currentFilters.selected_suburbs.length > 0) {
-        filtered = filtered.filter(m => currentFilters.selected_suburbs.includes(m.suburb));
-    }
-    if (currentFilters.selected_materials.length > 0) {
-        filtered = filtered.filter(m => currentFilters.selected_materials.includes(m.material));
-    }
+    // Always request only manholes
+    params.append('asset_type', 'manhole');
     
-    return filtered;
+    const url = `${API_BASE_URL}/assets?${params.toString()}`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('Failed to fetch manholes');
+    const data = await response.json();
+    return data;  // backend returns array of manhole objects
 }
 
-function getFilteredPipelines() {
-    let filtered = [...allPipelines];
+async function getFilteredPipelines() {
+    const params = new URLSearchParams();
+    if (currentFilters.pipe_size !== 'all') params.append('pipe_size', currentFilters.pipe_size);
+    if (currentFilters.pipe_mat !== 'all') params.append('pipe_mat', currentFilters.pipe_mat);
+    if (currentFilters.block_status !== 'all') params.append('block_status', currentFilters.block_status);
+    if (currentFilters.length_range !== 'all') params.append('length_range', currentFilters.length_range);
+    if (currentFilters.status !== 'all') params.append('status', currentFilters.status);
     
-    if (currentFilters.pipe_size !== 'all') {
-        filtered = filtered.filter(p => p.pipe_size == currentFilters.pipe_size);
-    }
-    if (currentFilters.pipe_mat !== 'all') {
-        filtered = filtered.filter(p => p.pipe_mat === currentFilters.pipe_mat);
-    }
-    if (currentFilters.block_status !== 'all') {
-        filtered = filtered.filter(p => p.block_stat === currentFilters.block_status);
-    }
-    if (currentFilters.length_range !== 'all') {
-        filtered = filtered.filter(p => {
-            const range = filterOptions.length_ranges.find(r => r.value === currentFilters.length_range);
-            if (range) return p.length >= range.min && p.length <= range.max;
-            return true;
-        });
-    }
+    params.append('asset_type', 'pipeline');
     
-    return filtered;
+    const url = `${API_BASE_URL}/assets?${params.toString()}`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('Failed to fetch pipelines');
+    const data = await response.json();
+    return data;
+}
+
+async function getAllManholes() {
+    const response = await fetch(`${API_BASE_URL}/assets?asset_type=manhole`);
+    if (!response.ok) throw new Error('Failed to fetch all manholes');
+    return await response.json();
+}
+
+async function getAllPipelines() {
+    const response = await fetch(`${API_BASE_URL}/assets?asset_type=pipeline`);
+    if (!response.ok) throw new Error('Failed to fetch all pipelines');
+    return await response.json();
 }
 
 function getCurrentFilters() {
     return currentFilters;
 }
 
-function getAllManholes() {
-    return allManholes;
-}
-
-function getAllPipelines() {
-    return allPipelines;
-}
-
 // ============================================
-// MODAL FUNCTIONS - FIXED
+// MODAL FUNCTIONS (unchanged)
 // ============================================
 
 let tempFilters = { ...currentFilters };
@@ -223,7 +164,6 @@ function openFilterModal() {
         console.log('Modal displayed');
     } else {
         console.error('Modal element not found!');
-        // Try to create modal if not exists
         createModalIfNotExists();
     }
 }
@@ -303,7 +243,6 @@ function toggleArrayFilter(filterType, value) {
 }
 
 function updateModalUI() {
-    // Update all filter button states
     updateButtonGroup('#modalSuburbFilters', 'data-suburb', tempFilters.suburb);
     updateButtonGroup('#modalTownshipFilters', 'data-township', tempFilters.township);
     updateButtonGroup('#modalWardFilters', 'data-ward', tempFilters.ward);
@@ -319,7 +258,6 @@ function updateModalUI() {
     updateButtonGroup('#modalLengthRangeFilters', 'data-length_range', tempFilters.length_range);
     updateButtonGroup('#modalDepthRangeFilters', 'data-depth_range', tempFilters.depth_range);
     
-    // Update input values
     const diameterMin = document.getElementById('diameterMinInput');
     if (diameterMin) diameterMin.value = tempFilters.diameter_min;
     const diameterMax = document.getElementById('diameterMaxInput');
@@ -362,19 +300,25 @@ function updateFilterButtonText() {
     }
 }
 
-function triggerFilterChange() {
-    const event = new CustomEvent('filtersChanged', {
-        detail: {
-            manholes: getFilteredManholes(),
-            pipelines: getFilteredPipelines(),
-            filters: currentFilters
-        }
-    });
-    document.dispatchEvent(event);
+async function triggerFilterChange() {
+    try {
+        const manholes = await getFilteredManholes();
+        const pipelines = await getFilteredPipelines();
+        const event = new CustomEvent('filtersChanged', {
+            detail: {
+                manholes: manholes,
+                pipelines: pipelines,
+                filters: currentFilters
+            }
+        });
+        document.dispatchEvent(event);
+    } catch (err) {
+        console.error('Error applying filters:', err);
+    }
 }
 
 // ============================================
-// RENDER HTML
+// RENDER HTML (unchanged)
 // ============================================
 
 function render() {
@@ -578,7 +522,7 @@ function render() {
 }
 
 // ============================================
-// ATTACH EVENTS
+// ATTACH EVENTS (unchanged)
 // ============================================
 
 function attachEvents() {
@@ -597,7 +541,6 @@ function attachEvents() {
     const resetBtn = document.getElementById('resetFiltersBtn');
     if (resetBtn) resetBtn.addEventListener('click', resetFilters);
     
-    // Close on outside click
     const modal = document.getElementById('filterModal');
     if (modal) {
         modal.addEventListener('click', (e) => {
@@ -605,7 +548,6 @@ function attachEvents() {
         });
     }
     
-    // Attach all filter button events
     attachButtonEvents('#modalSuburbFilters', 'data-suburb', 'suburb');
     attachButtonEvents('#modalTownshipFilters', 'data-township', 'township');
     attachButtonEvents('#modalWardFilters', 'data-ward', 'ward');
@@ -621,7 +563,6 @@ function attachEvents() {
     attachButtonEvents('#modalLengthRangeFilters', 'data-length_range', 'length_range');
     attachButtonEvents('#modalDepthRangeFilters', 'data-depth_range', 'depth_range');
     
-    // Input events
     const diamMin = document.getElementById('diameterMinInput');
     if (diamMin) diamMin.addEventListener('input', (e) => updateTempFilter('diameter_min', e.target.value));
     
@@ -668,7 +609,7 @@ export default {
     init: initFilters,
     getFilteredManholes: getFilteredManholes,
     getFilteredPipelines: getFilteredPipelines,
-    getAllManholes: () => allManholes,
-    getAllPipelines: () => allPipelines,
+    getAllManholes: getAllManholes,
+    getAllPipelines: getAllPipelines,
     getCurrent: getCurrentFilters
 };
