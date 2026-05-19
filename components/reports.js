@@ -1,47 +1,151 @@
 // components/reports.js - Reports Component
-// Single tab with "SEWER REPORTS" main heading and collapsible sections
-// Includes PDF, CSV, JSON, and Shapefile (SHP/GeoJSON) exports with lat/lon
+// Fetches live data from Python Flask backend and integrates with map
+
+const API_BASE_URL = 'http://localhost:5000/api';
+
+// Store fetched data
+let pipelinesData = [];
+let manholesData = [];
+let jobLogsData = [];
+let complaintsData = [];
+let vehicleData = { operational: [], workshop: [] }; // Store vehicle info
 
 // ============================================
-// MOCK DATA (will be replaced with API data)
+// FETCH FUNCTIONS (from backend)
 // ============================================
 
-const mockPipelines = [
-    { id: 1, pipe_id: '13373', start_mh: 'SKBMH267', end_mh: 'SKBSP018', pipe_mat: 'E/W', pipe_size: 150, class: 'Primary', block_stat: 'Partial', length: 4.35, lat: -18.9735, lng: 32.6705 },
-    { id: 2, pipe_id: '36047', start_mh: 'GGMH001', end_mh: 'GGMH002', pipe_mat: 'PVC', pipe_size: 200, class: 'Secondary', block_stat: 'Clear', length: 12.5, lat: -18.9750, lng: 32.6720 },
-    { id: 3, pipe_id: '45218', start_mh: 'MH-045', end_mh: 'MH-046', pipe_mat: 'Concrete', pipe_size: 300, class: 'Trunk', block_stat: 'Blocked', length: 25.8, lat: -18.9700, lng: 32.6660 }
-];
+async function fetchAllPipelines() {
+    try {
+        const res = await fetch(`${API_BASE_URL}/pipelines_all`);
+        if (!res.ok) throw new Error('Failed to fetch pipelines');
+        const geojson = await res.json();
+        return geojson.features.map(f => ({
+            ...f.properties,
+            lat: f.geometry.coordinates[1],
+            lng: f.geometry.coordinates[0]
+        }));
+    } catch (error) {
+        console.error('Error fetching pipelines:', error);
+        return [];
+    }
+}
 
-const mockManholes = [
-    { manhole_id: 'GGMH001', mh_depth: 2.5, ground_lv: 1250.0, inv_lev: 1247.5, pipe_id: '36047', bloc_stat: 'Clear', class: 'Standard', inspector: 'John Smith', type: 'Access', suburb_nam: 'BORDERVALE 1', lat: -18.9735, lng: 32.6705 },
-    { manhole_id: 'GGMH002', mh_depth: 3.2, ground_lv: 1252.0, inv_lev: 1248.8, pipe_id: '36047', bloc_stat: 'Partial', class: 'Deep', inspector: 'Mary Jones', type: 'Junction', suburb_nam: 'BORDERVALE 1', lat: -18.9750, lng: 32.6720 },
-    { manhole_id: 'MH-045', mh_depth: 4.0, ground_lv: 1245.0, inv_lev: 1241.0, pipe_id: '45218', bloc_stat: 'Blocked', class: 'Standard', inspector: 'Peter Moyo', type: 'Drop', suburb_nam: 'CBD', lat: -18.9700, lng: 32.6660 }
-];
+async function fetchAllManholes() {
+    try {
+        const res = await fetch(`${API_BASE_URL}/manholes_all`);
+        if (!res.ok) throw new Error('Failed to fetch manholes');
+        const geojson = await res.json();
+        return geojson.features.map(f => ({
+            ...f.properties,
+            lat: f.geometry.coordinates[1],
+            lng: f.geometry.coordinates[0]
+        }));
+    } catch (error) {
+        console.error('Error fetching manholes:', error);
+        return [];
+    }
+}
 
-const mockJobLogs = [
-    { id: 1, job_number: 'JOB-001', asset_id: 'MH-001', asset_type: 'manhole', job_type: 'unblocking', description: 'Cleared severe blockage', priority: 'high', status: 'completed', assigned_to: 'John Doe', performed_by: 'John Doe', started_at: '2026-04-15T08:00:00', completed_at: '2026-04-15T10:30:00', resolution_hours: 2.5, notes: 'Used high-pressure jetter', lat: -18.9735, lng: 32.6705, suburb: 'CBD' },
-    { id: 2, job_number: 'JOB-002', asset_id: 'PL-001', asset_type: 'pipeline', job_type: 'inspection', description: 'CCTV inspection', priority: 'normal', status: 'completed', assigned_to: 'Mary Smith', performed_by: 'Mary Smith', started_at: '2026-04-14T09:00:00', completed_at: '2026-04-14T11:00:00', resolution_hours: 2.0, notes: 'Found cracks in pipe', lat: -18.9750, lng: 32.6720, suburb: 'Sakubva' },
-    { id: 3, job_number: 'JOB-003', asset_id: 'MH-003', asset_type: 'manhole', job_type: 'repair', description: 'Replace manhole cover', priority: 'medium', status: 'in_progress', assigned_to: 'Peter Moyo', performed_by: null, started_at: '2026-04-16T07:00:00', completed_at: null, resolution_hours: null, notes: 'Waiting for materials', lat: -18.9780, lng: 32.6750, suburb: 'Dangamvura' },
-    { id: 4, job_number: 'JOB-004', asset_id: 'PL-002', asset_type: 'pipeline', job_type: 'unblocking', description: 'Emergency blockage', priority: 'critical', status: 'pending', assigned_to: 'Emergency Team', performed_by: null, started_at: null, completed_at: null, resolution_hours: null, notes: 'Urgent response needed', lat: -18.9700, lng: 32.6660, suburb: 'CBD' }
-];
+async function fetchAllJobLogs() {
+    try {
+        const res = await fetch(`${API_BASE_URL}/jobs_all`);
+        if (!res.ok) throw new Error('Failed to fetch job logs');
+        const geojson = await res.json();
+        return geojson.features.map(f => ({
+            ...f.properties,
+            lat: f.geometry.coordinates[1],
+            lng: f.geometry.coordinates[0]
+        }));
+    } catch (error) {
+        console.error('Error fetching job logs:', error);
+        return [];
+    }
+}
 
-// ============================================
-// CONSTANTS
-// ============================================
+async function fetchComplaints() {
+    try {
+        const res = await fetch(`${API_BASE_URL}/complaints/all`);
+        if (!res.ok) throw new Error('Failed to fetch complaints');
+        return await res.json();
+    } catch (error) {
+        console.error('Error fetching complaints:', error);
+        return [];
+    }
+}
 
-const LOGO_URL = 'https://upload.wikimedia.org/wikipedia/commons/a/a0/Mutare_City_logo_2023.png';
+async function refreshAllData() {
+    const [pipelines, manholes, jobs, complaints] = await Promise.all([
+        fetchAllPipelines(),
+        fetchAllManholes(),
+        fetchAllJobLogs(),
+        fetchComplaints()
+    ]);
+    pipelinesData = pipelines;
+    manholesData = manholes;
+    jobLogsData = jobs;
+    complaintsData = complaints;
+    
+    // Store globally for compatibility
+    window.pipelineData = pipelinesData;
+    window.manholeData = manholesData;
+    window.jobLogData = jobLogsData;
+    window.complaintsData = complaintsData;
+    
+    updateCountsInUI();
+}
+
+function updateCountsInUI() {
+    const pipelineBadge = document.querySelector('.accordion-section:first-child .badge');
+    const manholeBadge = document.querySelector('.accordion-section:nth-child(2) .badge');
+    const jobBadge = document.querySelector('.accordion-section:nth-child(3) .badge');
+    const complaintBadge = document.querySelector('.accordion-section:nth-child(4) .badge');
+    
+    if (pipelineBadge) pipelineBadge.textContent = pipelinesData.length;
+    if (manholeBadge) manholeBadge.textContent = manholesData.length;
+    if (jobBadge) jobBadge.textContent = jobLogsData.length;
+    if (complaintBadge) complaintBadge.textContent = complaintsData.length;
+    
+    // Update job stats
+    const completedCount = jobLogsData.filter(j => j.status === 'completed').length;
+    const inProgressCount = jobLogsData.filter(j => j.status === 'in_progress').length;
+    const pendingCount = jobLogsData.filter(j => j.status === 'pending').length;
+    
+    const statsSpan = document.querySelector('.job-stats');
+    if (statsSpan) {
+        statsSpan.innerHTML = `
+            <span class="stat-completed">✓ Completed: ${completedCount}</span>
+            <span class="stat-progress">🔄 In Progress: ${inProgressCount}</span>
+            <span class="stat-pending">⏳ Pending: ${pendingCount}</span>
+        `;
+    }
+    
+    // Update complaint stats
+    const resolvedCount = complaintsData.filter(c => c.status === 'resolved').length;
+    const unresolvedCount = complaintsData.filter(c => c.status === 'pending' || c.status === 'unresolved').length;
+    
+    const complaintStats = document.querySelector('.complaint-stats');
+    if (complaintStats) {
+        complaintStats.innerHTML = `
+            <span class="stat-resolved">✅ Resolved: ${resolvedCount}</span>
+            <span class="stat-unresolved">⚠️ Unresolved: ${unresolvedCount}</span>
+        `;
+    }
+    
+    // Update vehicle stats if present
+    const vehicleStats = document.querySelector('.vehicle-stats');
+    if (vehicleStats && (vehicleData.operational.length > 0 || vehicleData.workshop.length > 0)) {
+        vehicleStats.innerHTML = `
+            <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-subtle);">
+                <div style="color: #28a745;">🚗 Operational: ${vehicleData.operational.map(v => v.brand + ' ' + v.plate).join(', ')}</div>
+                <div style="color: #ffc107;">🔧 Workshop: ${vehicleData.workshop.map(v => v.brand + ' ' + v.plate).join(', ')}</div>
+            </div>
+        `;
+    }
+}
 
 // ============================================
 // HELPER FUNCTIONS
 // ============================================
-
-function getCurrentData() {
-    return {
-        pipelines: window.pipelineData || mockPipelines,
-        manholes: window.manholeData || mockManholes,
-        jobLogs: window.jobLogData || mockJobLogs
-    };
-}
 
 function downloadFile(content, filename, mimeType) {
     const blob = new Blob([content], { type: `${mimeType};charset=utf-8;` });
@@ -55,75 +159,59 @@ function downloadFile(content, filename, mimeType) {
     URL.revokeObjectURL(url);
 }
 
-// ============================================
-// PDF LOGO FUNCTION
-// ============================================
+const LOGO_URL = 'https://upload.wikimedia.org/wikipedia/commons/a/a0/Mutare_City_logo_2023.png';
 
 function addLogoToPDF(doc, callback) {
     const img = new Image();
     img.crossOrigin = 'Anonymous';
     img.src = LOGO_URL;
-    
     img.onload = function() {
         try {
-            // Add logo at top-left corner
             doc.addImage(img, 'PNG', 15, 8, 25, 25);
         } catch(e) {
-            console.warn('Could not add image to PDF, using text fallback');
+            console.warn('Could not add image, using text fallback');
             doc.setFontSize(14);
             doc.setTextColor(34, 139, 34);
             doc.text('CITY OF MUTARE', 20, 25);
         }
         if (callback) callback();
     };
-    
     img.onerror = function() {
-        console.warn('Logo image failed to load from URL, using text fallback');
+        console.warn('Logo failed to load, using text fallback');
         doc.setFontSize(14);
         doc.setTextColor(34, 139, 34);
         doc.text('CITY OF MUTARE', 20, 25);
         if (callback) callback();
     };
-    
-    // If image already loaded
-    if (img.complete) {
-        img.onload();
-    }
+    if (img.complete) img.onload();
 }
 
 // ============================================
-// PDF GENERATION WITH LOGO
+// PDF GENERATION
 // ============================================
 
 function generatePipelineReport() {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF('landscape');
-    const data = getCurrentData();
-    
-    // Add logo asynchronously, then generate content
     addLogoToPDF(doc, () => {
-        // Header
         doc.setFontSize(20);
         doc.setTextColor(34, 139, 34);
         doc.text('Mutare City Council', 50, 20);
-        
         doc.setFontSize(16);
         doc.text('Waste Water Pipeline Report', 50, 32);
-        
         doc.setFontSize(10);
         doc.setTextColor(100, 100, 100);
         doc.text(`Generated: ${new Date().toLocaleString()}`, 50, 42);
-        doc.text(`Total Pipelines: ${data.pipelines.length}`, 50, 49);
+        doc.text(`Total Pipelines: ${pipelinesData.length}`, 50, 49);
         
         const tableData = [['Pipe ID', 'Start MH', 'End MH', 'Material', 'Size', 'Status', 'Length', 'Latitude', 'Longitude']];
-        data.pipelines.forEach(p => {
+        pipelinesData.forEach(p => {
             tableData.push([
                 p.pipe_id || '—', p.start_mh || '—', p.end_mh || '—', p.pipe_mat || '—',
                 p.pipe_size || '—', p.block_stat || 'Normal', p.length ? p.length.toFixed(2) : '—',
                 p.lat ? p.lat.toFixed(6) : '—', p.lng ? p.lng.toFixed(6) : '—'
             ]);
         });
-        
         doc.autoTable({ 
             startY: 58, 
             head: [tableData[0]], 
@@ -131,14 +219,11 @@ function generatePipelineReport() {
             theme: 'striped',
             headStyles: { fillColor: [34, 139, 34], textColor: [255, 255, 255] } 
         });
-        
-        // Footer
         const finalY = doc.lastAutoTable.finalY + 10;
         doc.setFontSize(8);
         doc.setTextColor(34, 139, 34);
         doc.text('Mutare City Council - Sewer Management Department', 20, finalY);
         doc.text(`Report ID: PIPE-${new Date().toISOString().slice(0,10).replace(/-/g, '')}`, 20, finalY + 5);
-        
         doc.save(`pipeline_report_${new Date().toISOString().slice(0,10)}.pdf`);
     });
 }
@@ -146,8 +231,6 @@ function generatePipelineReport() {
 function generateManholeReport() {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF('landscape');
-    const data = getCurrentData();
-    
     addLogoToPDF(doc, () => {
         doc.setFontSize(20);
         doc.setTextColor(34, 139, 34);
@@ -157,17 +240,16 @@ function generateManholeReport() {
         doc.setFontSize(10);
         doc.setTextColor(100, 100, 100);
         doc.text(`Generated: ${new Date().toLocaleString()}`, 50, 42);
-        doc.text(`Total Manholes: ${data.manholes.length}`, 50, 49);
+        doc.text(`Total Manholes: ${manholesData.length}`, 50, 49);
         
         const tableData = [['ID', 'Depth', 'Pipe ID', 'Status', 'Type', 'Suburb', 'Inspector', 'Latitude', 'Longitude']];
-        data.manholes.forEach(m => {
+        manholesData.forEach(m => {
             tableData.push([
                 m.manhole_id || '—', m.mh_depth ? m.mh_depth + 'm' : '—', m.pipe_id || '—',
                 m.bloc_stat || 'Normal', m.type || '—', m.suburb_nam || '—', m.inspector || '—',
                 m.lat ? m.lat.toFixed(6) : '—', m.lng ? m.lng.toFixed(6) : '—'
             ]);
         });
-        
         doc.autoTable({ 
             startY: 58, 
             head: [tableData[0]], 
@@ -175,13 +257,11 @@ function generateManholeReport() {
             theme: 'striped',
             headStyles: { fillColor: [34, 139, 34], textColor: [255, 255, 255] } 
         });
-        
         const finalY = doc.lastAutoTable.finalY + 10;
         doc.setFontSize(8);
         doc.setTextColor(34, 139, 34);
         doc.text('Mutare City Council - Sewer Management Department', 20, finalY);
         doc.text(`Report ID: MH-${new Date().toISOString().slice(0,10).replace(/-/g, '')}`, 20, finalY + 5);
-        
         doc.save(`manhole_report_${new Date().toISOString().slice(0,10)}.pdf`);
     });
 }
@@ -189,8 +269,6 @@ function generateManholeReport() {
 function generateJobLogReport() {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF('landscape');
-    const data = getCurrentData();
-    
     addLogoToPDF(doc, () => {
         doc.setFontSize(20);
         doc.setTextColor(34, 139, 34);
@@ -202,7 +280,7 @@ function generateJobLogReport() {
         doc.text(`Generated: ${new Date().toLocaleString()}`, 50, 42);
         
         const tableData = [['Job #', 'Asset ID', 'Type', 'Description', 'Priority', 'Status', 'Assigned To', 'Hours', 'Latitude', 'Longitude', 'Suburb']];
-        data.jobLogs.forEach(j => {
+        jobLogsData.forEach(j => {
             tableData.push([
                 j.job_number || '—', j.asset_id || '—', j.asset_type || '—',
                 (j.description || '').substring(0, 25), j.priority || '—', j.status || '—',
@@ -210,7 +288,6 @@ function generateJobLogReport() {
                 j.lat ? j.lat.toFixed(6) : '—', j.lng ? j.lng.toFixed(6) : '—', j.suburb || '—'
             ]);
         });
-        
         doc.autoTable({ 
             startY: 50, 
             head: [tableData[0]], 
@@ -218,12 +295,10 @@ function generateJobLogReport() {
             theme: 'striped',
             headStyles: { fillColor: [34, 139, 34], textColor: [255, 255, 255] } 
         });
-        
         const finalY = doc.lastAutoTable.finalY + 10;
-        const completed = data.jobLogs.filter(j => j.status === 'completed').length;
-        const inProgress = data.jobLogs.filter(j => j.status === 'in_progress').length;
-        const pending = data.jobLogs.filter(j => j.status === 'pending').length;
-        
+        const completed = jobLogsData.filter(j => j.status === 'completed').length;
+        const inProgress = jobLogsData.filter(j => j.status === 'in_progress').length;
+        const pending = jobLogsData.filter(j => j.status === 'pending').length;
         doc.setFontSize(10);
         doc.setTextColor(34, 139, 34);
         doc.text('Summary', 20, finalY);
@@ -231,93 +306,158 @@ function generateJobLogReport() {
         doc.text(`✓ Completed: ${completed}`, 20, finalY + 7);
         doc.text(`🔄 In Progress: ${inProgress}`, 20, finalY + 14);
         doc.text(`⏳ Pending: ${pending}`, 20, finalY + 21);
-        
         doc.save(`joblog_report_${new Date().toISOString().slice(0,10)}.pdf`);
     });
 }
 
+function generateComplaintReport() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF('landscape');
+    addLogoToPDF(doc, () => {
+        doc.setFontSize(20);
+        doc.setTextColor(34, 139, 34);
+        doc.text('Mutare City Council', 50, 20);
+        doc.setFontSize(16);
+        doc.text('Sewer Complaints Report', 50, 32);
+        doc.setFontSize(10);
+        doc.setTextColor(100, 100, 100);
+        doc.text(`Generated: ${new Date().toLocaleString()}`, 50, 42);
+        doc.text(`Total Complaints: ${complaintsData.length}`, 50, 49);
+        
+        const tableData = [['ID', 'Address', 'Original Text', 'Status', 'Fuzzy Match', 'Buffer Radius', 'Report Date', 'Attended Date', 'Latitude', 'Longitude']];
+        complaintsData.forEach(c => {
+            tableData.push([
+                c.id || '—', (c.address || '').substring(0, 25), (c.original_text || '').substring(0, 30),
+                c.status || 'pending', c.fuzzy_match ? 'Yes' : 'No', c.buffer_radius || 50,
+                c.report_date || '—', c.attended_date || '—',
+                c.lat ? c.lat.toFixed(6) : '—', c.lng ? c.lng.toFixed(6) : '—'
+            ]);
+        });
+        doc.autoTable({ 
+            startY: 58, 
+            head: [tableData[0]], 
+            body: tableData.slice(1), 
+            theme: 'striped',
+            headStyles: { fillColor: [34, 139, 34], textColor: [255, 255, 255] } 
+        });
+        const finalY = doc.lastAutoTable.finalY + 10;
+        const resolved = complaintsData.filter(c => c.status === 'resolved').length;
+        const pending = complaintsData.filter(c => c.status === 'pending').length;
+        
+        doc.setFontSize(10);
+        doc.setTextColor(34, 139, 34);
+        doc.text('Summary', 20, finalY);
+        doc.setTextColor(50, 50, 50);
+        doc.text(`✅ Resolved: ${resolved}`, 20, finalY + 7);
+        doc.text(`⚠️ Pending: ${pending}`, 20, finalY + 14);
+        
+        // Add vehicle information if available
+        if (vehicleData.operational.length > 0 || vehicleData.workshop.length > 0) {
+            const vehicleY = finalY + 25;
+            doc.setFontSize(10);
+            doc.setTextColor(34, 139, 34);
+            doc.text('Vehicle Information', 20, vehicleY);
+            doc.setTextColor(50, 50, 50);
+            let vehicleLine = vehicleY + 7;
+            if (vehicleData.operational.length > 0) {
+                doc.text(`🚗 Operational: ${vehicleData.operational.map(v => v.brand + ' ' + v.plate).join(', ')}`, 20, vehicleLine);
+                vehicleLine += 7;
+            }
+            if (vehicleData.workshop.length > 0) {
+                doc.text(`🔧 Workshop: ${vehicleData.workshop.map(v => v.brand + ' ' + v.plate).join(', ')}`, 20, vehicleLine);
+            }
+        }
+        
+        doc.save(`complaints_report_${new Date().toISOString().slice(0,10)}.pdf`);
+    });
+}
+
 // ============================================
-// CSV EXPORT
+// CSV, JSON, GEOJSON EXPORTS
 // ============================================
 
 function exportPipelinesCSV() {
-    const data = getCurrentData();
     const headers = ['Pipe ID', 'Start MH', 'End MH', 'Material', 'Size', 'Status', 'Length', 'Latitude', 'Longitude'];
-    const rows = data.pipelines.map(p => [p.pipe_id, p.start_mh, p.end_mh, p.pipe_mat, p.pipe_size, p.block_stat, p.length, p.lat, p.lng]);
+    const rows = pipelinesData.map(p => [p.pipe_id, p.start_mh, p.end_mh, p.pipe_mat, p.pipe_size, p.block_stat, p.length, p.lat, p.lng]);
     const csvString = [headers, ...rows].map(row => row.join(',')).join('\n');
     downloadFile(csvString, `pipelines_${new Date().toISOString().slice(0,10)}.csv`, 'text/csv');
 }
 
 function exportManholesCSV() {
-    const data = getCurrentData();
     const headers = ['Manhole ID', 'Depth', 'Pipe ID', 'Status', 'Type', 'Suburb', 'Inspector', 'Latitude', 'Longitude'];
-    const rows = data.manholes.map(m => [m.manhole_id, m.mh_depth, m.pipe_id, m.bloc_stat, m.type, m.suburb_nam, m.inspector, m.lat, m.lng]);
+    const rows = manholesData.map(m => [m.manhole_id, m.mh_depth, m.pipe_id, m.bloc_stat, m.type, m.suburb_nam, m.inspector, m.lat, m.lng]);
     const csvString = [headers, ...rows].map(row => row.join(',')).join('\n');
     downloadFile(csvString, `manholes_${new Date().toISOString().slice(0,10)}.csv`, 'text/csv');
 }
 
 function exportJobLogCSV() {
-    const data = getCurrentData();
     const headers = ['Job #', 'Asset ID', 'Type', 'Description', 'Priority', 'Status', 'Assigned To', 'Hours', 'Latitude', 'Longitude', 'Suburb'];
-    const rows = data.jobLogs.map(j => [j.job_number, j.asset_id, j.asset_type, j.description, j.priority, j.status, j.assigned_to, j.resolution_hours, j.lat, j.lng, j.suburb]);
+    const rows = jobLogsData.map(j => [j.job_number, j.asset_id, j.asset_type, j.description, j.priority, j.status, j.assigned_to, j.resolution_hours, j.lat, j.lng, j.suburb]);
     const csvString = [headers, ...rows].map(row => row.join(',')).join('\n');
     downloadFile(csvString, `joblog_${new Date().toISOString().slice(0,10)}.csv`, 'text/csv');
 }
 
-// ============================================
-// JSON EXPORT
-// ============================================
+function exportComplaintsCSV() {
+    const headers = ['ID', 'Address', 'Original Text', 'Status', 'Fuzzy Match', 'Buffer Radius', 'Report Date', 'Attended Date', 'Latitude', 'Longitude'];
+    const rows = complaintsData.map(c => [c.id, c.address, c.original_text, c.status, c.fuzzy_match ? 'Yes' : 'No', c.buffer_radius, c.report_date, c.attended_date, c.lat, c.lng]);
+    const csvString = [headers, ...rows].map(row => row.join(',')).join('\n');
+    downloadFile(csvString, `complaints_${new Date().toISOString().slice(0,10)}.csv`, 'text/csv');
+}
 
 function exportPipelinesJSON() {
-    const data = getCurrentData();
-    downloadFile(JSON.stringify({ report_type: 'pipelines', generated_at: new Date().toISOString(), total: data.pipelines.length, data: data.pipelines }, null, 2), `pipelines_${new Date().toISOString().slice(0,10)}.json`, 'application/json');
+    downloadFile(JSON.stringify({ report_type: 'pipelines', generated_at: new Date().toISOString(), total: pipelinesData.length, data: pipelinesData }, null, 2), `pipelines_${new Date().toISOString().slice(0,10)}.json`, 'application/json');
 }
 
 function exportManholesJSON() {
-    const data = getCurrentData();
-    downloadFile(JSON.stringify({ report_type: 'manholes', generated_at: new Date().toISOString(), total: data.manholes.length, data: data.manholes }, null, 2), `manholes_${new Date().toISOString().slice(0,10)}.json`, 'application/json');
+    downloadFile(JSON.stringify({ report_type: 'manholes', generated_at: new Date().toISOString(), total: manholesData.length, data: manholesData }, null, 2), `manholes_${new Date().toISOString().slice(0,10)}.json`, 'application/json');
 }
 
 function exportJobLogJSON() {
-    const data = getCurrentData();
-    downloadFile(JSON.stringify({ report_type: 'job_logs', generated_at: new Date().toISOString(), total: data.jobLogs.length, data: data.jobLogs }, null, 2), `joblog_${new Date().toISOString().slice(0,10)}.json`, 'application/json');
+    downloadFile(JSON.stringify({ report_type: 'job_logs', generated_at: new Date().toISOString(), total: jobLogsData.length, data: jobLogsData }, null, 2), `joblog_${new Date().toISOString().slice(0,10)}.json`, 'application/json');
 }
 
-// ============================================
-// SHAPEFILE (GeoJSON) EXPORT
-// ============================================
+function exportComplaintsJSON() {
+    downloadFile(JSON.stringify({ report_type: 'complaints', generated_at: new Date().toISOString(), total: complaintsData.length, data: complaintsData, vehicles: vehicleData }, null, 2), `complaints_${new Date().toISOString().slice(0,10)}.json`, 'application/json');
+}
 
 function exportPipelinesGeoJSON() {
-    const data = getCurrentData();
-    const features = data.pipelines.filter(p => p.lat && p.lng).map(p => ({
+    const features = pipelinesData.filter(p => p.lat && p.lng).map(p => ({
         type: 'Feature', geometry: { type: 'Point', coordinates: [parseFloat(p.lng), parseFloat(p.lat)] },
         properties: { pipe_id: p.pipe_id, start_mh: p.start_mh, end_mh: p.end_mh, material: p.pipe_mat, size: p.pipe_size, status: p.block_stat, length: p.length }
     }));
-    const geoJSON = { type: 'FeatureCollection', name: 'mutare_pipelines', crs: { type: 'name', properties: { name: 'urn:ogc:def:crs:OGC:1.3:CRS84' } }, features: features };
+    const geoJSON = { type: 'FeatureCollection', name: 'mutare_pipelines', crs: { type: 'name', properties: { name: 'urn:ogc:def:crs:OGC:1.3:CRS84' } }, features };
     downloadFile(JSON.stringify(geoJSON, null, 2), `pipelines_${new Date().toISOString().slice(0,10)}.geojson`, 'application/json');
-    alert('GeoJSON exported. Use QGIS to convert to Shapefile (.shp).');
+    alert('GeoJSON exported. Use QGIS to convert to Shapefile.');
 }
 
 function exportManholesGeoJSON() {
-    const data = getCurrentData();
-    const features = data.manholes.filter(m => m.lat && m.lng).map(m => ({
+    const features = manholesData.filter(m => m.lat && m.lng).map(m => ({
         type: 'Feature', geometry: { type: 'Point', coordinates: [parseFloat(m.lng), parseFloat(m.lat)] },
         properties: { manhole_id: m.manhole_id, depth: m.mh_depth, pipe_id: m.pipe_id, status: m.bloc_stat, type: m.type, suburb: m.suburb_nam, inspector: m.inspector }
     }));
-    const geoJSON = { type: 'FeatureCollection', name: 'mutare_manholes', crs: { type: 'name', properties: { name: 'urn:ogc:def:crs:OGC:1.3:CRS84' } }, features: features };
+    const geoJSON = { type: 'FeatureCollection', name: 'mutare_manholes', crs: { type: 'name', properties: { name: 'urn:ogc:def:crs:OGC:1.3:CRS84' } }, features };
     downloadFile(JSON.stringify(geoJSON, null, 2), `manholes_${new Date().toISOString().slice(0,10)}.geojson`, 'application/json');
-    alert('GeoJSON exported. Use QGIS to convert to Shapefile (.shp).');
+    alert('GeoJSON exported. Use QGIS to convert to Shapefile.');
 }
 
 function exportJobLogGeoJSON() {
-    const data = getCurrentData();
-    const features = data.jobLogs.filter(j => j.lat && j.lng).map(j => ({
+    const features = jobLogsData.filter(j => j.lat && j.lng).map(j => ({
         type: 'Feature', geometry: { type: 'Point', coordinates: [parseFloat(j.lng), parseFloat(j.lat)] },
         properties: { job_number: j.job_number, asset_id: j.asset_id, job_type: j.job_type, description: j.description, priority: j.priority, status: j.status, assigned_to: j.assigned_to, hours: j.resolution_hours, suburb: j.suburb }
     }));
-    const geoJSON = { type: 'FeatureCollection', name: 'mutare_job_logs', crs: { type: 'name', properties: { name: 'urn:ogc:def:crs:OGC:1.3:CRS84' } }, features: features };
+    const geoJSON = { type: 'FeatureCollection', name: 'mutare_job_logs', crs: { type: 'name', properties: { name: 'urn:ogc:def:crs:OGC:1.3:CRS84' } }, features };
     downloadFile(JSON.stringify(geoJSON, null, 2), `joblog_${new Date().toISOString().slice(0,10)}.geojson`, 'application/json');
-    alert('GeoJSON exported. Use QGIS to convert to Shapefile (.shp).');
+    alert('GeoJSON exported. Use QGIS to convert to Shapefile.');
+}
+
+function exportComplaintsGeoJSON() {
+    const features = complaintsData.filter(c => c.lat && c.lng).map(c => ({
+        type: 'Feature', geometry: { type: 'Point', coordinates: [parseFloat(c.lng), parseFloat(c.lat)] },
+        properties: { id: c.id, address: c.address, original_text: c.original_text, status: c.status, fuzzy_match: c.fuzzy_match, buffer_radius: c.buffer_radius, report_date: c.report_date, attended_date: c.attended_date }
+    }));
+    const geoJSON = { type: 'FeatureCollection', name: 'sewer_complaints', crs: { type: 'name', properties: { name: 'urn:ogc:def:crs:OGC:1.3:CRS84' } }, features };
+    downloadFile(JSON.stringify(geoJSON, null, 2), `complaints_${new Date().toISOString().slice(0,10)}.geojson`, 'application/json');
+    alert('GeoJSON exported. Use QGIS to convert to Shapefile.');
 }
 
 // ============================================
@@ -325,7 +465,6 @@ function exportJobLogGeoJSON() {
 // ============================================
 
 function attachEvents() {
-    // Accordion headers
     document.querySelectorAll('.accordion-header').forEach(header => {
         header.addEventListener('click', function() {
             const content = this.nextElementSibling;
@@ -334,45 +473,57 @@ function attachEvents() {
         });
     });
     
-    // PDF buttons
+    // Pipeline events
     const pipelineBtn = document.getElementById('pipelineReportBtn');
     if (pipelineBtn) pipelineBtn.addEventListener('click', generatePipelineReport);
     
-    const manholeBtn = document.getElementById('manholeReportBtn');
-    if (manholeBtn) manholeBtn.addEventListener('click', generateManholeReport);
-    
-    const jobLogBtn = document.getElementById('jobLogReportBtn');
-    if (jobLogBtn) jobLogBtn.addEventListener('click', generateJobLogReport);
-    
-    // CSV buttons
     const exportPipeCSV = document.getElementById('exportPipelinesCSV');
     if (exportPipeCSV) exportPipeCSV.addEventListener('click', exportPipelinesCSV);
+    
+    const exportPipeJSON = document.getElementById('exportPipelinesJSON');
+    if (exportPipeJSON) exportPipeJSON.addEventListener('click', exportPipelinesJSON);
+    
+    const exportPipeSHP = document.getElementById('exportPipelinesSHP');
+    if (exportPipeSHP) exportPipeSHP.addEventListener('click', exportPipelinesGeoJSON);
+    
+    // Manhole events
+    const manholeBtn = document.getElementById('manholeReportBtn');
+    if (manholeBtn) manholeBtn.addEventListener('click', generateManholeReport);
     
     const exportMhCSV = document.getElementById('exportManholesCSV');
     if (exportMhCSV) exportMhCSV.addEventListener('click', exportManholesCSV);
     
-    const exportJobCSV = document.getElementById('exportJobLogCSV');
-    if (exportJobCSV) exportJobCSV.addEventListener('click', exportJobLogCSV);
-    
-    // JSON buttons
-    const exportPipeJSON = document.getElementById('exportPipelinesJSON');
-    if (exportPipeJSON) exportPipeJSON.addEventListener('click', exportPipelinesJSON);
-    
     const exportMhJSON = document.getElementById('exportManholesJSON');
     if (exportMhJSON) exportMhJSON.addEventListener('click', exportManholesJSON);
-    
-    const exportJobJSON = document.getElementById('exportJobLogJSON');
-    if (exportJobJSON) exportJobJSON.addEventListener('click', exportJobLogJSON);
-    
-    // SHP (GeoJSON) buttons
-    const exportPipeSHP = document.getElementById('exportPipelinesSHP');
-    if (exportPipeSHP) exportPipeSHP.addEventListener('click', exportPipelinesGeoJSON);
     
     const exportMhSHP = document.getElementById('exportManholesSHP');
     if (exportMhSHP) exportMhSHP.addEventListener('click', exportManholesGeoJSON);
     
+    // Job Log events
+    const jobLogBtn = document.getElementById('jobLogReportBtn');
+    if (jobLogBtn) jobLogBtn.addEventListener('click', generateJobLogReport);
+    
+    const exportJobCSV = document.getElementById('exportJobLogCSV');
+    if (exportJobCSV) exportJobCSV.addEventListener('click', exportJobLogCSV);
+    
+    const exportJobJSON = document.getElementById('exportJobLogJSON');
+    if (exportJobJSON) exportJobJSON.addEventListener('click', exportJobLogJSON);
+    
     const exportJobSHP = document.getElementById('exportJobLogSHP');
     if (exportJobSHP) exportJobSHP.addEventListener('click', exportJobLogGeoJSON);
+    
+    // Complaint events
+    const complaintBtn = document.getElementById('complaintReportBtn');
+    if (complaintBtn) complaintBtn.addEventListener('click', generateComplaintReport);
+    
+    const exportCompCSV = document.getElementById('exportComplaintsCSV');
+    if (exportCompCSV) exportCompCSV.addEventListener('click', exportComplaintsCSV);
+    
+    const exportCompJSON = document.getElementById('exportComplaintsJSON');
+    if (exportCompJSON) exportCompJSON.addEventListener('click', exportComplaintsJSON);
+    
+    const exportCompSHP = document.getElementById('exportComplaintsSHP');
+    if (exportCompSHP) exportCompSHP.addEventListener('click', exportComplaintsGeoJSON);
 }
 
 // ============================================
@@ -380,11 +531,6 @@ function attachEvents() {
 // ============================================
 
 function render() {
-    const data = getCurrentData();
-    const completedCount = data.jobLogs.filter(j => j.status === 'completed').length;
-    const inProgressCount = data.jobLogs.filter(j => j.status === 'in_progress').length;
-    const pendingCount = data.jobLogs.filter(j => j.status === 'pending').length;
-    
     return `
         <div class="reports-container">
             <div class="reports-main-header">
@@ -392,10 +538,9 @@ function render() {
                 <p>Generate and export sewer asset reports in multiple formats</p>
             </div>
             
-            <!-- PIPELINES ACCORDION -->
             <div class="accordion-section">
                 <div class="accordion-header">
-                    <span>📏 PIPELINES <span class="badge">${data.pipelines.length}</span></span>
+                    <span>📏 PIPELINES <span class="badge">${pipelinesData.length}</span></span>
                     <span class="arrow">▶</span>
                 </div>
                 <div class="accordion-content">
@@ -406,15 +551,14 @@ function render() {
                         <button id="exportPipelinesSHP" class="report-btn shp-btn">🗺️ SHP</button>
                     </div>
                     <div class="report-info">
-                        <span class="info-text">📍 ${data.pipelines.length} pipelines with coordinates</span>
+                        <span class="info-text">📍 ${pipelinesData.length} pipelines with coordinates</span>
                     </div>
                 </div>
             </div>
             
-            <!-- MANHOLES ACCORDION -->
             <div class="accordion-section">
                 <div class="accordion-header">
-                    <span>🕳️ MANHOLES <span class="badge">${data.manholes.length}</span></span>
+                    <span>🕳️ MANHOLES <span class="badge">${manholesData.length}</span></span>
                     <span class="arrow">▶</span>
                 </div>
                 <div class="accordion-content">
@@ -425,15 +569,14 @@ function render() {
                         <button id="exportManholesSHP" class="report-btn shp-btn">🗺️ SHP</button>
                     </div>
                     <div class="report-info">
-                        <span class="info-text">📍 ${data.manholes.length} manholes with coordinates</span>
+                        <span class="info-text">📍 ${manholesData.length} manholes with coordinates</span>
                     </div>
                 </div>
             </div>
             
-            <!-- JOB LOGS ACCORDION -->
             <div class="accordion-section">
                 <div class="accordion-header">
-                    <span>📋 JOB LOGS <span class="badge">${data.jobLogs.length}</span></span>
+                    <span>📋 JOB LOGS <span class="badge">${jobLogsData.length}</span></span>
                     <span class="arrow">▶</span>
                 </div>
                 <div class="accordion-content">
@@ -443,11 +586,31 @@ function render() {
                         <button id="exportJobLogJSON" class="report-btn json-btn">🔗 JSON</button>
                         <button id="exportJobLogSHP" class="report-btn shp-btn">🗺️ SHP</button>
                     </div>
-                    <div class="report-stats">
-                        <span class="stat-completed">✓ Completed: ${completedCount}</span>
-                        <span class="stat-progress">🔄 In Progress: ${inProgressCount}</span>
-                        <span class="stat-pending">⏳ Pending: ${pendingCount}</span>
+                    <div class="job-stats">
+                        <span class="stat-completed">✓ Completed: ${jobLogsData.filter(j => j.status === 'completed').length}</span>
+                        <span class="stat-progress">🔄 In Progress: ${jobLogsData.filter(j => j.status === 'in_progress').length}</span>
+                        <span class="stat-pending">⏳ Pending: ${jobLogsData.filter(j => j.status === 'pending').length}</span>
                     </div>
+                </div>
+            </div>
+            
+            <div class="accordion-section">
+                <div class="accordion-header">
+                    <span>⚠️ COMPLAINTS <span class="badge">${complaintsData.length}</span></span>
+                    <span class="arrow">▶</span>
+                </div>
+                <div class="accordion-content">
+                    <div class="report-buttons-group">
+                        <button id="complaintReportBtn" class="report-btn pdf-btn">📊 PDF</button>
+                        <button id="exportComplaintsCSV" class="report-btn csv-btn">📎 CSV</button>
+                        <button id="exportComplaintsJSON" class="report-btn json-btn">🔗 JSON</button>
+                        <button id="exportComplaintsSHP" class="report-btn shp-btn">🗺️ SHP</button>
+                    </div>
+                    <div class="complaint-stats">
+                        <span class="stat-resolved">✅ Resolved: ${complaintsData.filter(c => c.status === 'resolved').length}</span>
+                        <span class="stat-unresolved">⚠️ Unresolved: ${complaintsData.filter(c => c.status === 'pending').length}</span>
+                    </div>
+                    <div class="vehicle-stats"></div>
                 </div>
             </div>
         </div>
@@ -458,19 +621,64 @@ function render() {
 // INITIALIZATION
 // ============================================
 
-function init() {
+async function init() {
+    await refreshAllData();
     attachEvents();
-    console.log('Reports component initialized with online logo');
+    console.log('Reports component initialized with live API data');
+    console.log(`Loaded: ${pipelinesData.length} pipelines, ${manholesData.length} manholes, ${jobLogsData.length} jobs, ${complaintsData.length} complaints`);
 }
 
-function updateReports(pipelines, manholes, jobLogs) {
-    if (pipelines) window.pipelineData = pipelines;
-    if (manholes) window.manholeData = manholes;
-    if (jobLogs) window.jobLogData = jobLogs;
+function updateReports(pipelines, manholes, jobLogs, complaints, vehicles) {
+    if (pipelines) pipelinesData = pipelines;
+    if (manholes) manholesData = manholes;
+    if (jobLogs) jobLogsData = jobLogs;
+    if (complaints) complaintsData = complaints;
+    if (vehicles) vehicleData = vehicles;
+    
+    window.pipelineData = pipelinesData;
+    window.manholeData = manholesData;
+    window.jobLogData = jobLogsData;
+    window.complaintsData = complaintsData;
+    window.vehicleData = vehicleData;
+    
+    updateCountsInUI();
 }
+
+// Listen for report processed events
+document.addEventListener('reportProcessed', async (e) => {
+    console.log('Report processed, refreshing reports data...', e.detail);
+    
+    // Store vehicle data
+    if (e.detail.vehicles) {
+        vehicleData = e.detail.vehicles;
+    }
+    
+    // Add new complaints to the complaintsData array
+    if (e.detail.complaints && e.detail.complaints.length > 0) {
+        const newComplaints = e.detail.complaints.map((c, idx) => ({
+            id: Date.now() + idx,
+            address: c.address,
+            original_text: c.original_text,
+            status: 'pending',
+            fuzzy_match: c.fuzzy_match || false,
+            buffer_radius: c.buffer_radius || 50,
+            report_date: e.detail.reportDate,
+            lat: c.latitude,
+            lng: c.longitude
+        }));
+        
+        // Add to existing complaints
+        complaintsData = [...newComplaints, ...complaintsData];
+        window.complaintsData = complaintsData;
+        updateCountsInUI();
+    }
+    
+    await refreshAllData();
+});
 
 export default {
     render,
     init,
-    update: updateReports
+    update: updateReports,
+    getData: () => ({ pipelines: pipelinesData, manholes: manholesData, jobs: jobLogsData, complaints: complaintsData, vehicles: vehicleData })
 };

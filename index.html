@@ -35,7 +35,13 @@
         <!-- Layer List (checkboxes for manholes, pipelines, etc.) -->
         <div id="layermanager-container"></div>
         <!-- Filters (accordion style) -->
-        <div id="filters-container"></div>
+        <div id="filters-container">
+            <!-- FILTER BUTTON - THIS IS THE ONLY ADDITION -->
+            <div class="filter-section">
+                <button id="mainFilterBtn" class="filter-main-btn">🔍 FILTERS</button>
+                <div class="active-filters-summary" id="activeFiltersSummary"></div>
+            </div>
+        </div>
         <!-- Report Processor (below filter) -->
         <div id="reportprocessor-container"></div>
     </div>
@@ -54,10 +60,11 @@
         <div id="status-container"></div>
     </div>
     
-    <!-- RIGHT PANEL - Statistics, Hotspots, Reports -->
+    <!-- RIGHT PANEL - Statistics, Hotspots, Identification, Reports -->
     <div class="right-panel">
         <div id="statistics-container"></div>
         <div id="hotspots-container"></div>
+        <div id="identification-container"></div>
         <div id="reports-container"></div>
     </div>
 </div>

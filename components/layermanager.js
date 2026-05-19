@@ -1,18 +1,29 @@
 // components/layermanager.js - Layer Manager Component
-// Menu as dropdown icon at top, Layer list in left panel
+// Integrated with Flask backend API and mapview module
 
+import MapView from './mapview.js';
+
+// API base URL (Flask backend on port 5000)
+const API_BASE_URL = 'http://localhost:5000/api';
+
+// Layer definitions – matches your actual database tables
 let availableLayers = [
-    { id: 'manholes', name: 'waste_water_manhole', type: 'point', visible: true, color: '#28a745' },
-    { id: 'pipelines', name: 'waste_water_pipeline', type: 'line', visible: true, color: '#2b7bff' },
-    { id: 'suburbs', name: 'suburbs_boundary', type: 'polygon', visible: false, color: '#ffc107' },
-    { id: 'roads', name: 'roads_access', type: 'line', visible: false, color: '#aaaaaa' }
+    { id: 'manholes', tableName: 'waste_water_manhole', type: 'point', visible: true, color: '#9b59b6', apiEndpoint: '/manholes/list' },
+    { id: 'pipelines', tableName: 'waste_water_pipeline', type: 'line', visible: true, color: '#32cd32', apiEndpoint: '/pipelines/geojson' },
+    { id: 'suburbs', tableName: 'suburbs', type: 'polygon', visible: false, color: '#000000', apiEndpoint: '/suburbs' }
 ];
 
 let layerVisibility = {
     manholes: true,
     pipelines: true,
-    suburbs: false,
-    roads: false
+    suburbs: false
+};
+
+// Store references to map layers (managed by mapview, but we track visibility)
+let layerLoaded = {
+    manholes: false,
+    pipelines: false,
+    suburbs: false
 };
 
 // ============================================
@@ -97,13 +108,13 @@ function renderLayerList() {
     }
     
     return availableLayers.map(layer => `
-        <div class="layer-item" data-layer="${layer.id}">
-            <input type="checkbox" class="layer-checkbox" data-layer="${layer.id}" ${layer.visible ? 'checked' : ''}>
-            <span class="layer-name">${layer.type === 'point' ? '📍' : layer.type === 'line' ? '📏' : '🔷'} ${layer.name}</span>
+        <div class="layer-item" data-layer-id="${layer.id}">
+            <input type="checkbox" class="layer-checkbox" data-layer-id="${layer.id}" ${layer.visible ? 'checked' : ''}>
+            <span class="layer-name">${layer.type === 'point' ? '📍' : layer.type === 'line' ? '📏' : '🔷'} ${layer.tableName}</span>
             <div class="layer-controls">
-                <button class="layer-zoom" data-layer="${layer.id}" title="Zoom to layer">🔍</button>
-                <button class="layer-style" data-layer="${layer.id}" title="Change style">🎨</button>
-                <button class="layer-remove" data-layer="${layer.id}" title="Remove layer">✖️</button>
+                <button class="layer-zoom" data-layer-id="${layer.id}" title="Zoom to layer">🔍</button>
+                <button class="layer-style" data-layer-id="${layer.id}" title="Change style">🎨</button>
+                <button class="layer-remove" data-layer-id="${layer.id}" title="Remove layer">✖️</button>
             </div>
         </div>
     `).join('');
@@ -123,92 +134,124 @@ function render() {
 }
 
 // ============================================
-// INITIALIZE FUNCTIONS
+// LAYER MANAGEMENT FUNCTIONS (with backend)
 // ============================================
 
-function initMenuDropdown() {
-    const menuBtn = document.getElementById('menuIconBtn');
-    const dropdown = document.getElementById('menuDropdown');
+// Toggle layer visibility – load or clear from map
+async function toggleLayer(layerId, visible) {
+    layerVisibility[layerId] = visible;
+    const layer = availableLayers.find(l => l.id === layerId);
+    if (layer) layer.visible = visible;
     
-    if (!menuBtn || !dropdown) return;
-    
-    // Toggle dropdown on button click
-    menuBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const isVisible = dropdown.style.display === 'block';
-        dropdown.style.display = isVisible ? 'none' : 'block';
-    });
-    
-    // Close dropdown when clicking outside
-    document.addEventListener('click', function(e) {
-        if (!menuBtn.contains(e.target) && !dropdown.contains(e.target)) {
-            dropdown.style.display = 'none';
-        }
-    });
-    
-    // Menu item clicks
-    document.querySelectorAll('.menu-item').forEach(item => {
-        item.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const action = item.dataset.action;
-            handleMenuAction(action);
-            dropdown.style.display = 'none';
-        });
-    });
-}
-
-function handleMenuAction(action) {
-    console.log('Menu action:', action);
-    
-    switch(action) {
-        case 'newProject':
-            if(confirm('Create new project? Unsaved changes will be lost.')) resetProject();
-            break;
-        case 'saveProject':
-            saveProject();
-            break;
-        case 'openProject':
-            openProject();
-            break;
-        case 'exportMap':
-            alert('Export map as image');
-            break;
-        case 'printLayout':
-            window.print();
-            break;
-        case 'fullscreen':
-            toggleFullScreen();
-            break;
-        case 'addLayer':
-            openAddLayerDialog();
-            break;
-        case 'postgis':
-            alert('Connect to PostgreSQL/PostGIS database');
-            break;
-        case 'zoomIn':
-            if (MapView && MapView.getMap) {
-                const map = MapView.getMap();
-                if (map) map.zoomIn();
-            }
-            break;
-        case 'zoomOut':
-            if (MapView && MapView.getMap) {
-                const map = MapView.getMap();
-                if (map) map.zoomOut();
-            }
-            break;
-        case 'refresh':
-            location.reload();
-            break;
-        default:
-            alert(`Action: ${action} (Coming soon)`);
+    if (visible) {
+        await loadLayerFromAPI(layerId);
+    } else {
+        clearLayerFromMap(layerId);
     }
 }
 
-// ============================================
-// LAYER MANAGEMENT FUNCTIONS
-// ============================================
+async function loadLayerFromAPI(layerId) {
+    const layer = availableLayers.find(l => l.id === layerId);
+    if (!layer) return;
+    
+    const url = `${API_BASE_URL}${layer.apiEndpoint}`;
+    
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        
+        switch (layerId) {
+            case 'manholes':
+                // Manholes from /api/manholes/list (flat array)
+                if (MapView && MapView.loadManholes) {
+                    MapView.loadManholes(data);
+                }
+                break;
+            case 'pipelines':
+                // Pipelines from /api/pipelines/geojson (GeoJSON)
+                if (MapView && MapView.loadPipelinesFromGeoJSON) {
+                    MapView.loadPipelinesFromGeoJSON(data);
+                }
+                break;
+            case 'suburbs':
+                // Suburbs from /api/suburbs (GeoJSON)
+                if (MapView && MapView.loadSuburbsFromGeoJSON) {
+                    MapView.loadSuburbsFromGeoJSON(data);
+                }
+                break;
+            default:
+                console.warn('Unknown layer type', layerId);
+        }
+        layerLoaded[layerId] = true;
+    } catch (error) {
+        console.error(`Failed to load layer ${layerId}:`, error);
+        layerLoaded[layerId] = false;
+    }
+}
 
+function clearLayerFromMap(layerId) {
+    switch (layerId) {
+        case 'manholes':
+            if (MapView && MapView.loadManholes) {
+                MapView.loadManholes([]);
+            }
+            break;
+        case 'pipelines':
+            if (MapView && MapView.clearPipelines) {
+                MapView.clearPipelines();
+            }
+            break;
+        case 'suburbs':
+            if (MapView && MapView.clearSuburbs) {
+                MapView.clearSuburbs();
+            }
+            break;
+        default:
+            break;
+    }
+    layerLoaded[layerId] = false;
+}
+
+// Refresh all layers that are currently visible
+async function refreshVisibleLayers() {
+    const visibleLayers = availableLayers.filter(l => l.visible);
+    for (const layer of visibleLayers) {
+        await loadLayerFromAPI(layer.id);
+    }
+}
+
+// Add a new PostGIS layer from a table name (simplified for now)
+async function addPostGISLayer(tableName) {
+    const layerId = tableName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    
+    // Avoid duplicates
+    if (availableLayers.some(l => l.id === layerId)) {
+        alert(`Layer "${tableName}" already added.`);
+        return;
+    }
+    
+    // Determine type based on table name heuristics (user can change later)
+    let type = 'point';
+    let apiEndpoint = '/assets?asset_type=custom';
+    
+    const newLayer = {
+        id: layerId,
+        tableName: tableName,
+        type: type,
+        visible: true,
+        color: '#3399ff',
+        apiEndpoint: apiEndpoint
+    };
+    
+    availableLayers.push(newLayer);
+    layerVisibility[layerId] = true;
+    refreshLayerList();
+    
+    alert(`Layer "${tableName}" added. You may need to implement custom API endpoint for full functionality.`);
+}
+
+// Update the layer list UI and reattach events
 function refreshLayerList() {
     const layerList = document.getElementById('layer-list');
     if (layerList) {
@@ -220,17 +263,17 @@ function refreshLayerList() {
 function attachLayerEvents() {
     // Checkbox events
     document.querySelectorAll('.layer-checkbox').forEach(cb => {
-        cb.addEventListener('change', function() {
-            const layerId = this.dataset.layer;
-            toggleLayer(layerId, this.checked);
+        cb.addEventListener('change', async function() {
+            const layerId = this.dataset.layerId;
+            await toggleLayer(layerId, this.checked);
         });
     });
     
     // Zoom buttons
     document.querySelectorAll('.layer-zoom').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const layerId = btn.dataset.layer;
-            zoomToLayer(layerId);
+        btn.addEventListener('click', async (e) => {
+            const layerId = btn.dataset.layerId;
+            await zoomToLayer(layerId);
             e.stopPropagation();
         });
     });
@@ -238,7 +281,7 @@ function attachLayerEvents() {
     // Style buttons
     document.querySelectorAll('.layer-style').forEach(btn => {
         btn.addEventListener('click', (e) => {
-            const layerId = btn.dataset.layer;
+            const layerId = btn.dataset.layerId;
             changeLayerStyle(layerId);
             e.stopPropagation();
         });
@@ -247,7 +290,7 @@ function attachLayerEvents() {
     // Remove buttons
     document.querySelectorAll('.layer-remove').forEach(btn => {
         btn.addEventListener('click', (e) => {
-            const layerId = btn.dataset.layer;
+            const layerId = btn.dataset.layerId;
             removeLayer(layerId);
             e.stopPropagation();
         });
@@ -256,78 +299,149 @@ function attachLayerEvents() {
     // Add layer button
     const addLayerBtn = document.getElementById('addLayerBtn');
     if (addLayerBtn) {
+        addLayerBtn.removeEventListener('click', openAddLayerDialog);
         addLayerBtn.addEventListener('click', openAddLayerDialog);
     }
 }
 
-function toggleLayer(layerId, visible) {
-    layerVisibility[layerId] = visible;
-    const layer = availableLayers.find(l => l.id === layerId);
-    if (layer) layer.visible = visible;
+async function zoomToLayer(layerId) {
+    const map = MapView.getMap();
+    if (!map) return;
     
-    const event = new CustomEvent('layerToggled', { detail: { layerId, visible } });
-    document.dispatchEvent(event);
-}
-
-function zoomToLayer(layerId) {
-    alert(`Zoom to ${layerId} layer`);
+    // For now, just fit to current markers or default view
+    // In a full implementation, you'd fetch the layer's extent
+    alert(`Zoom to ${layerId} - Feature coming soon`);
 }
 
 function changeLayerStyle(layerId) {
     const newColor = prompt('Enter color (hex code or name):', '#28a745');
     if (newColor) {
         const layer = availableLayers.find(l => l.id === layerId);
-        if (layer) layer.color = newColor;
-        alert(`Style for ${layerId} changed to ${newColor}`);
+        if (layer) {
+            layer.color = newColor;
+            alert(`Style for ${layerId} changed to ${newColor}`);
+            if (layer.visible) {
+                loadLayerFromAPI(layerId);
+            }
+        }
     }
 }
 
 function removeLayer(layerId) {
     if (confirm(`Remove layer "${layerId}" from map?`)) {
         const index = availableLayers.findIndex(l => l.id === layerId);
-        if (index !== -1) availableLayers.splice(index, 1);
-        delete layerVisibility[layerId];
-        refreshLayerList();
-        
-        const event = new CustomEvent('layerRemoved', { detail: { layerId } });
-        document.dispatchEvent(event);
+        if (index !== -1) {
+            availableLayers.splice(index, 1);
+            delete layerVisibility[layerId];
+            clearLayerFromMap(layerId);
+            refreshLayerList();
+        }
     }
 }
 
 function openAddLayerDialog() {
-    const layerName = prompt('Enter PostGIS table name:', 'waste_water_manhole');
-    if (layerName) {
-        const layerId = layerName.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-        availableLayers.push({
-            id: layerId,
-            name: layerName,
-            type: 'point',
-            visible: true,
-            color: '#28a745'
-        });
-        layerVisibility[layerId] = true;
-        refreshLayerList();
-        alert(`Layer "${layerName}" added.`);
+    const tableName = prompt('Enter PostGIS table name (e.g., roads, catchments):');
+    if (tableName && tableName.trim()) {
+        addPostGISLayer(tableName.trim());
     }
 }
 
 // ============================================
-// PROJECT FUNCTIONS
+// MENU ACTIONS
+// ============================================
+
+function initMenuDropdown() {
+    const menuBtn = document.getElementById('menuIconBtn');
+    const dropdown = document.getElementById('menuDropdown');
+    
+    if (!menuBtn || !dropdown) return;
+    
+    menuBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isVisible = dropdown.style.display === 'block';
+        dropdown.style.display = isVisible ? 'none' : 'block';
+    });
+    
+    document.addEventListener('click', function(e) {
+        if (!menuBtn.contains(e.target) && !dropdown.contains(e.target)) {
+            dropdown.style.display = 'none';
+        }
+    });
+    
+    document.querySelectorAll('.menu-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const action = item.dataset.action;
+            handleMenuAction(action);
+            dropdown.style.display = 'none';
+        });
+    });
+}
+
+async function handleMenuAction(action) {
+    console.log('Menu action:', action);
+    const map = MapView.getMap();
+    switch(action) {
+        case 'newProject':
+            if(confirm('Create new project? Unsaved changes will be lost.')) resetProject();
+            break;
+        case 'saveProject':
+            saveProject();
+            break;
+        case 'openProject':
+            openProject();
+            break;
+        case 'exportMap':
+            alert('Export map as image (feature coming soon)');
+            break;
+        case 'printLayout':
+            window.print();
+            break;
+        case 'fullscreen':
+            toggleFullScreen();
+            break;
+        case 'addLayer':
+            openAddLayerDialog();
+            break;
+        case 'postgis':
+            alert('PostGIS connection settings – modify .env on backend');
+            break;
+        case 'zoomIn':
+            if (map) map.zoomIn();
+            break;
+        case 'zoomOut':
+            if (map) map.zoomOut();
+            break;
+        case 'refresh':
+            await refreshVisibleLayers();
+            break;
+        default:
+            alert(`Action: ${action} (Coming soon)`);
+    }
+}
+
+// ============================================
+// PROJECT SAVE/LOAD (using localStorage)
 // ============================================
 
 function resetProject() {
     availableLayers = [
-        { id: 'manholes', name: 'waste_water_manhole', type: 'point', visible: true, color: '#28a745' },
-        { id: 'pipelines', name: 'waste_water_pipeline', type: 'line', visible: true, color: '#2b7bff' },
-        { id: 'suburbs', name: 'suburbs_boundary', type: 'polygon', visible: false, color: '#ffc107' }
+        { id: 'manholes', tableName: 'waste_water_manhole', type: 'point', visible: true, color: '#9b59b6', apiEndpoint: '/manholes/list' },
+        { id: 'pipelines', tableName: 'waste_water_pipeline', type: 'line', visible: true, color: '#32cd32', apiEndpoint: '/pipelines/geojson' },
+        { id: 'suburbs', tableName: 'suburbs', type: 'polygon', visible: false, color: '#000000', apiEndpoint: '/suburbs' }
     ];
     layerVisibility = { manholes: true, pipelines: true, suburbs: false };
     refreshLayerList();
+    refreshVisibleLayers();
     alert('Project reset to default');
 }
 
 function saveProject() {
-    const project = { layers: availableLayers, visibility: layerVisibility, savedAt: new Date().toISOString() };
+    const project = { 
+        layers: availableLayers, 
+        visibility: layerVisibility, 
+        savedAt: new Date().toISOString() 
+    };
     localStorage.setItem('sewer_project', JSON.stringify(project));
     alert('Project saved!');
 }
@@ -339,6 +453,7 @@ function openProject() {
         availableLayers = project.layers;
         layerVisibility = project.visibility;
         refreshLayerList();
+        refreshVisibleLayers();
         alert('Project loaded!');
     } else {
         alert('No saved project found');
@@ -360,10 +475,13 @@ function toggleFullScreen() {
 function initLayerManager() {
     refreshLayerList();
     initMenuDropdown();
+    setTimeout(() => {
+        refreshVisibleLayers();
+    }, 500);
 }
 
 // ============================================
-// GETTERS
+// GETTERS (for external use)
 // ============================================
 
 function getLayerVisibility() {
@@ -384,5 +502,6 @@ export default {
     init: initLayerManager,
     getLayerVisibility: getLayerVisibility,
     getAvailableLayers: getAvailableLayers,
-    toggleLayer: toggleLayer
+    toggleLayer: toggleLayer,
+    refreshVisibleLayers: refreshVisibleLayers
 };

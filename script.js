@@ -1,28 +1,19 @@
 // ============================================
-// MAIN DASHBOARD LOGIC
-// Integrates mapview.js and filters.js
+// MAIN DASHBOARD LOGIC - UPDATED VERSION
+// Integrates with Flask backend and all components
 // ============================================
 
-// Mock data
-var allManholes = [
-    { id: 1, asset_code: 'MH-001', suburb: 'CBD', diameter: 150, material: 'concrete', status: 'critical', blockages: 12, lat: -18.9735, lng: 32.6705 },
-    { id: 2, asset_code: 'MH-002', suburb: 'Sakubva', diameter: 100, material: 'PVC', status: 'warning', blockages: 5, lat: -18.9750, lng: 32.6720 },
-    { id: 3, asset_code: 'MH-003', suburb: 'Dangamvura', diameter: 80, material: 'asbestos', status: 'good', blockages: 3, lat: -18.9780, lng: 32.6750 },
-    { id: 4, asset_code: 'MH-004', suburb: 'CBD', diameter: 120, material: 'concrete', status: 'critical', blockages: 15, lat: -18.9700, lng: 32.6660 },
-    { id: 5, asset_code: 'MH-005', suburb: 'Chikanga', diameter: 130, material: 'concrete', status: 'warning', blockages: 7, lat: -18.9650, lng: 32.6600 }
-];
+// API Configuration
+const API_BASE_URL = 'http://localhost:5000/api';
 
-var allPipelines = [
-    { id: 1, asset_code: 'PL-001', diameter: 200, material: 'concrete', status: 'warning', coordinates: [[-18.9735, 32.6705], [-18.9750, 32.6720]] },
-    { id: 2, asset_code: 'PL-002', diameter: 150, material: 'PVC', status: 'good', coordinates: [[-18.9750, 32.6720], [-18.9780, 32.6750]] },
-    { id: 3, asset_code: 'PL-003', diameter: 250, material: 'concrete', status: 'critical', coordinates: [[-18.9735, 32.6705], [-18.9700, 32.6660]] }
-];
+// Global data stores (will be populated from API)
+let allManholes = [];
+let allPipelines = [];
+let allSuburbs = [];
+let allComplaints = [];
+let allJobs = [];
 
-var allSuburbs = [
-    { name: 'CBD', area: 5.2, asset_count: 25, blockages: 45, coordinates: [[-18.9760, 32.6670], [-18.9740, 32.6720], [-18.9690, 32.6690], [-18.9710, 32.6650], [-18.9760, 32.6670]] }
-];
-
-// Layer visibility
+// Layer visibility (managed by layermanager but kept for compatibility)
 var showManholes = true;
 var showPipelines = true;
 var showSuburbs = false;
@@ -30,103 +21,152 @@ var showSuburbs = false;
 // Charts
 var suburbChart, jobsChart;
 
-// Initialize dashboard
-document.addEventListener('DOMContentLoaded', function() {
-    // Initialize map
-    if (window.MapView) {
-        MapView.init(-18.9735, 32.6705, 13);
-    }
+// ============================================
+// DATA FETCHING FROM FLASK BACKEND
+// ============================================
+
+async function fetchAllData() {
+    console.log('Fetching all data from API...');
     
-    // Initialize filters
-    if (window.Filters) {
-        Filters.init();
-    }
-    
-    // Load initial layers
-    loadFilteredLayers();
-    
-    // Initialize charts
-    initCharts();
-    
-    // Setup event listeners
-    setupEventListeners();
-    
-    // Listen for filter changes
-    document.addEventListener('filtersChanged', function() {
-        loadFilteredLayers();
-        updateChartsAndSummary();
-    });
-    
-    // Base map switcher
-    document.getElementById('baseMapSelect').addEventListener('change', function(e) {
-        if (window.MapView) {
-            MapView.switchBaseMap(e.target.value);
+    try {
+        // Fetch all datasets in parallel
+        const [manholesRes, pipelinesRes, suburbsRes, complaintsRes, jobsRes] = await Promise.all([
+            fetch(`${API_BASE_URL}/manholes_all`),
+            fetch(`${API_BASE_URL}/pipelines_all`),
+            fetch(`${API_BASE_URL}/suburbs_all`),
+            fetch(`${API_BASE_URL}/complaints_all`),
+            fetch(`${API_BASE_URL}/jobs_all`)
+        ]);
+        
+        // Process manholes
+        if (manholesRes.ok) {
+            const geojson = await manholesRes.json();
+            allManholes = geojson.features.map(f => ({
+                id: f.properties.manhole_id || f.properties.id,
+                asset_code: f.properties.manhole_id || `MH-${f.properties.id}`,
+                suburb: f.properties.suburb_nam || f.properties.suburb || 'Unknown',
+                suburb_id: f.properties.suburb_id,
+                diameter: f.properties.diameter || f.properties.mh_diameter || 150,
+                depth: f.properties.mh_depth,
+                material: f.properties.material || 'concrete',
+                status: f.properties.status || 'good',
+                blockages: f.properties.blockage_count || f.properties.blockages || 0,
+                inspector: f.properties.inspector,
+                lat: f.geometry.coordinates[1],
+                lng: f.geometry.coordinates[0],
+                type: 'manhole'
+            }));
+            console.log(`Loaded ${allManholes.length} manholes`);
         }
-    });
-    
-    // Layer toggles
-    document.getElementById('toggleManholesBtn').addEventListener('click', function() {
-        showManholes = !showManholes;
-        loadFilteredLayers();
-    });
-    
-    document.getElementById('togglePipelinesBtn').addEventListener('click', function() {
-        showPipelines = !showPipelines;
-        loadFilteredLayers();
-    });
-    
-    document.getElementById('toggleSuburbsBtn').addEventListener('click', function() {
-        showSuburbs = !showSuburbs;
-        loadFilteredLayers();
-    });
-    
-    // Toolbar buttons
-    document.getElementById('fitBoundsBtn').addEventListener('click', function() {
-        if (window.MapView) MapView.fitToBounds();
-    });
-    
-    document.getElementById('heatmapBtn').addEventListener('click', function() {
-        var heatPoints = [];
-        var filtered = Filters.applyToAssets(allManholes);
-        for (var i = 0; i < filtered.length; i++) {
-            heatPoints.push([filtered[i].lat, filtered[i].lng, filtered[i].blockages]);
+        
+        // Process pipelines
+        if (pipelinesRes.ok) {
+            const geojson = await pipelinesRes.json();
+            allPipelines = geojson.features.map(f => ({
+                id: f.properties.pipe_id || f.properties.id,
+                asset_code: f.properties.pipe_id || `PL-${f.properties.id}`,
+                diameter: f.properties.diameter || f.properties.pipe_size,
+                material: f.properties.material || f.properties.pipe_mat,
+                status: f.properties.status || f.properties.block_stat || 'good',
+                length: f.properties.shape_length || f.properties.length,
+                coordinates: f.geometry.coordinates,
+                type: 'pipeline'
+            }));
+            console.log(`Loaded ${allPipelines.length} pipelines`);
         }
-        if (window.MapView) MapView.addHeatmap(heatPoints);
-    });
-    
-    document.getElementById('clearHeatmapBtn').addEventListener('click', function() {
-        if (window.MapView) MapView.clearHeatmap();
-    });
-    
-    document.getElementById('weeklyReportBtn').addEventListener('click', generatePDF);
-    document.getElementById('exportCSVBtn').addEventListener('click', exportCSV);
-    document.getElementById('printMapBtn').addEventListener('click', function() { window.print(); });
-    document.getElementById('exportGeoJSONBtn').addEventListener('click', function() { alert('Export GeoJSON coming soon'); });
-    
-    // Tabs
-    var tabs = document.querySelectorAll('.tab');
-    for (var i = 0; i < tabs.length; i++) {
-        tabs[i].addEventListener('click', function() {
-            var tabId = this.getAttribute('data-tab');
-            var allTabs = document.querySelectorAll('.tab');
-            for (var j = 0; j < allTabs.length; j++) {
-                allTabs[j].classList.remove('active');
-            }
-            this.classList.add('active');
-            var allContents = document.querySelectorAll('.tab-content');
-            for (var k = 0; k < allContents.length; k++) {
-                allContents[k].style.display = 'none';
-            }
-            document.getElementById(tabId + '-tab').style.display = 'block';
-        });
+        
+        // Process suburbs
+        if (suburbsRes.ok) {
+            const geojson = await suburbsRes.json();
+            allSuburbs = geojson.features.map(f => ({
+                id: f.properties.suburb_id || f.properties.id,
+                name: f.properties.suburb_nam || f.properties.name,
+                area: f.properties.area_km2,
+                asset_count: f.properties.asset_count || 0,
+                blockages: f.properties.blockages || 0,
+                geometry: f.geometry,
+                type: 'suburb'
+            }));
+            console.log(`Loaded ${allSuburbs.length} suburbs`);
+        }
+        
+        // Process complaints
+        if (complaintsRes.ok) {
+            const geojson = await complaintsRes.json();
+            allComplaints = geojson.features.map(f => ({
+                id: f.properties.id,
+                address: f.properties.address,
+                original_text: f.properties.original_text,
+                status: f.properties.status || 'pending',
+                report_date: f.properties.report_date,
+                attended_date: f.properties.attended_date,
+                lat: f.geometry.coordinates[1],
+                lng: f.geometry.coordinates[0],
+                type: 'complaint'
+            }));
+            console.log(`Loaded ${allComplaints.length} complaints`);
+        }
+        
+        // Process jobs
+        if (jobsRes.ok) {
+            const geojson = await jobsRes.json();
+            allJobs = geojson.features.map(f => ({
+                id: f.properties.job_id || f.properties.id,
+                job_number: f.properties.job_number,
+                asset_id: f.properties.asset_id,
+                asset_type: f.properties.asset_type,
+                description: f.properties.description,
+                priority: f.properties.priority,
+                status: f.properties.status,
+                assigned_to: f.properties.assigned_to,
+                resolution_hours: f.properties.resolution_hours,
+                lat: f.geometry.coordinates[1],
+                lng: f.geometry.coordinates[0],
+                type: 'job'
+            }));
+            console.log(`Loaded ${allJobs.length} jobs`);
+        }
+        
+        // Update global window references for legacy compatibility
+        window.allManholes = allManholes;
+        window.allPipelines = allPipelines;
+        window.allSuburbs = allSuburbs;
+        window.allComplaints = allComplaints;
+        window.allJobs = allJobs;
+        
+        return true;
+    } catch (error) {
+        console.error('Error fetching data:', error);
+        return false;
     }
-});
+}
+
+// ============================================
+// FILTERED LAYER LOADING
+// ============================================
 
 function loadFilteredLayers() {
-    if (!window.Filters || !window.MapView) return;
+    if (!window.MapView) return;
     
-    var filteredManholes = Filters.applyToAssets(allManholes);
+    // Get current filters
+    const filters = window.Filters ? window.Filters.getCurrent() : { status: 'all', suburb: 'all', priority: 'all' };
     
+    // Filter manholes based on status and suburb
+    let filteredManholes = [...allManholes];
+    if (filters.status !== 'all') {
+        filteredManholes = filteredManholes.filter(m => m.status === filters.status);
+    }
+    if (filters.suburb !== 'all') {
+        filteredManholes = filteredManholes.filter(m => m.suburb === filters.suburb);
+    }
+    
+    // Filter pipelines based on status
+    let filteredPipelines = [...allPipelines];
+    if (filters.status !== 'all') {
+        filteredPipelines = filteredPipelines.filter(p => p.status === filters.status);
+    }
+    
+    // Load layers based on visibility
     if (showManholes) {
         MapView.loadManholes(filteredManholes);
     } else {
@@ -134,83 +174,366 @@ function loadFilteredLayers() {
     }
     
     if (showPipelines) {
-        // Filter pipelines based on status from filters
-        var filters = Filters.getCurrent();
-        var filteredPipes = allPipelines;
-        if (filters.status !== 'all') {
-            filteredPipes = allPipelines.filter(function(p) { return p.status === filters.status; });
-        }
-        MapView.loadPipelines(filteredPipes);
+        // Convert pipelines to GeoJSON format if needed
+        const pipelinesGeoJSON = {
+            type: 'FeatureCollection',
+            features: filteredPipelines.map(p => ({
+                type: 'Feature',
+                geometry: {
+                    type: 'LineString',
+                    coordinates: p.coordinates
+                },
+                properties: {
+                    pipe_id: p.asset_code,
+                    diameter: p.diameter,
+                    material: p.material,
+                    status: p.status,
+                    length: p.length
+                }
+            }))
+        };
+        MapView.loadPipelinesFromGeoJSON(pipelinesGeoJSON);
     } else {
-        MapView.loadPipelines([]);
+        MapView.clearPipelines();
     }
     
     if (showSuburbs) {
-        MapView.loadSuburbs(allSuburbs);
+        const suburbsGeoJSON = {
+            type: 'FeatureCollection',
+            features: allSuburbs.map(s => ({
+                type: 'Feature',
+                geometry: s.geometry,
+                properties: {
+                    suburb_nam: s.name,
+                    area: s.area,
+                    asset_count: s.asset_count
+                }
+            }))
+        };
+        MapView.loadSuburbsFromGeoJSON(suburbsGeoJSON);
     } else {
-        MapView.loadSuburbs([]);
+        MapView.clearSuburbs();
     }
     
-    // Update summary numbers
-    document.getElementById('totalManholes').innerText = filteredManholes.length;
-    document.getElementById('totalPipelines').innerText = showPipelines ? allPipelines.length : 0;
-    var criticalCount = filteredManholes.filter(function(m) { return m.status === 'critical'; }).length;
-    document.getElementById('criticalAssets').innerText = criticalCount;
-    var totalBlockages = filteredManholes.reduce(function(sum, m) { return sum + m.blockages; }, 0);
-    document.getElementById('totalBlockages').innerText = totalBlockages;
+    // Update summary statistics
+    updateSummaryStats(filteredManholes, filteredPipelines);
     
     // Update problem assets list
-    var sorted = filteredManholes.sort(function(a, b) { return b.blockages - a.blockages; }).slice(0, 5);
-    var problemList = document.getElementById('problemAssetsList');
+    updateProblemAssetsList(filteredManholes);
+}
+
+function updateSummaryStats(manholes, pipelines) {
+    const totalManholesEl = document.getElementById('totalManholes');
+    const totalPipelinesEl = document.getElementById('totalPipelines');
+    const criticalAssetsEl = document.getElementById('criticalAssets');
+    const totalBlockagesEl = document.getElementById('totalBlockages');
+    const avgBlockagesEl = document.getElementById('avgBlockages');
+    
+    if (totalManholesEl) totalManholesEl.innerText = manholes.length;
+    if (totalPipelinesEl) totalPipelinesEl.innerText = pipelines.length;
+    
+    const criticalCount = manholes.filter(m => m.status === 'critical').length;
+    if (criticalAssetsEl) criticalAssetsEl.innerText = criticalCount;
+    
+    const totalBlockages = manholes.reduce((sum, m) => sum + (m.blockages || 0), 0);
+    if (totalBlockagesEl) totalBlockagesEl.innerText = totalBlockages;
+    
+    const avgBlockages = manholes.length > 0 ? (totalBlockages / manholes.length).toFixed(1) : 0;
+    if (avgBlockagesEl) avgBlockagesEl.innerText = avgBlockages;
+}
+
+function updateProblemAssetsList(manholes) {
+    const sorted = [...manholes].sort((a, b) => (b.blockages || 0) - (a.blockages || 0)).slice(0, 5);
+    const problemList = document.getElementById('problemAssetsList');
     if (problemList) {
         problemList.innerHTML = '';
-        for (var i = 0; i < sorted.length; i++) {
-            var div = document.createElement('div');
+        for (const asset of sorted) {
+            const div = document.createElement('div');
             div.className = 'stat-row';
-            div.innerHTML = '<span>' + sorted[i].asset_code + ' - ' + sorted[i].suburb + '</span><span>' + sorted[i].blockages + ' blockages</span>';
+            div.innerHTML = `
+                <span>${asset.asset_code} - ${asset.suburb}</span>
+                <span style="color: ${asset.blockages > 10 ? '#dc3545' : asset.blockages > 5 ? '#ffc107' : '#28a745'}">
+                    ${asset.blockages || 0} blockages
+                </span>
+            `;
             problemList.appendChild(div);
         }
     }
 }
 
+// ============================================
+// CHART INITIALIZATION AND UPDATES
+// ============================================
+
 function initCharts() {
-    var suburbCtx = document.getElementById('suburbChart').getContext('2d');
-    var jobsCtx = document.getElementById('jobsChart').getContext('2d');
+    const suburbCtx = document.getElementById('suburbChart')?.getContext('2d');
+    const jobsCtx = document.getElementById('jobsChart')?.getContext('2d');
     
-    suburbChart = new Chart(suburbCtx, {
-        type: 'bar',
-        data: { labels: ['CBD', 'Sakubva', 'Dangamvura', 'Chikanga'], datasets: [{ label: 'Blockages', data: [0, 0, 0, 0], backgroundColor: '#228B22' }] },
-        options: { responsive: true, maintainAspectRatio: true }
-    });
+    if (suburbCtx) {
+        suburbChart = new Chart(suburbCtx, {
+            type: 'bar',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Blockages',
+                    data: [],
+                    backgroundColor: '#228B22',
+                    borderColor: '#2d8a2d',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                scales: {
+                    y: { beginAtZero: true, title: { display: true, text: 'Number of Blockages' } },
+                    x: { title: { display: true, text: 'Suburb' } }
+                }
+            }
+        });
+    }
     
-    jobsChart = new Chart(jobsCtx, {
-        type: 'pie',
-        data: { labels: ['Unblocking', 'Inspection', 'Repair'], datasets: [{ data: [45, 23, 12], backgroundColor: ['#228B22', '#44aa44', '#66cc66'] }] },
-        options: { responsive: true }
-    });
+    if (jobsCtx) {
+        jobsChart = new Chart(jobsCtx, {
+            type: 'pie',
+            data: {
+                labels: ['Unblocking', 'Inspection', 'Repair', 'Maintenance'],
+                datasets: [{
+                    data: [0, 0, 0, 0],
+                    backgroundColor: ['#228B22', '#44aa44', '#66cc66', '#88dd88'],
+                    borderColor: '#0a1f0a',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: { position: 'bottom' }
+                }
+            }
+        });
+    }
 }
 
 function updateChartsAndSummary() {
-    if (!window.Filters) return;
-    var filtered = Filters.applyToAssets(allManholes);
+    // Get current filters
+    const filters = window.Filters ? window.Filters.getCurrent() : { status: 'all', suburb: 'all' };
     
-    var suburbData = { 'CBD': 0, 'Sakubva': 0, 'Dangamvura': 0, 'Chikanga': 0 };
-    for (var i = 0; i < filtered.length; i++) {
-        if (suburbData[filtered[i].suburb] !== undefined) {
-            suburbData[filtered[i].suburb] += filtered[i].blockages;
-        }
+    // Filter manholes
+    let filteredManholes = [...allManholes];
+    if (filters.status !== 'all') {
+        filteredManholes = filteredManholes.filter(m => m.status === filters.status);
+    }
+    if (filters.suburb !== 'all') {
+        filteredManholes = filteredManholes.filter(m => m.suburb === filters.suburb);
     }
     
+    // Update suburb chart
     if (suburbChart) {
-        suburbChart.data.datasets[0].data = Object.values(suburbData);
+        const suburbMap = new Map();
+        for (const m of filteredManholes) {
+            const suburb = m.suburb;
+            const blockages = m.blockages || 0;
+            suburbMap.set(suburb, (suburbMap.get(suburb) || 0) + blockages);
+        }
+        
+        const suburbs = Array.from(suburbMap.keys());
+        const blockages = Array.from(suburbMap.values());
+        
+        suburbChart.data.labels = suburbs;
+        suburbChart.data.datasets[0].data = blockages;
         suburbChart.update();
     }
+    
+    // Update summary stats
+    updateSummaryStats(filteredManholes, allPipelines);
+    updateProblemAssetsList(filteredManholes);
 }
 
-function generatePDF() {
-    var { jsPDF } = window.jspdf;
-    var doc = new jsPDF();
-    doc.setFontSize(16);
+// ============================================
+// PDF GENERATION
+// ============================================
+
+async function generatePDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF('landscape');
+    
+    // Add title
+    doc.setFontSize(20);
     doc.setTextColor(34, 139, 34);
-    doc.text('Mutare Sewer Report', 20, 20);
-   
+    doc.text('Mutare City Sewer Report', 20, 20);
+    doc.setFontSize(10);
+    doc.setTextColor(100, 100, 100);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 20, 30);
+    
+    // Manholes table
+    const manholeData = allManholes.map(m => [
+        m.asset_code,
+        m.suburb,
+        m.status,
+        m.blockages || 0,
+        m.lat?.toFixed(4) || 'N/A',
+        m.lng?.toFixed(4) || 'N/A'
+    ]);
+    
+    doc.autoTable({
+        startY: 40,
+        head: [['Asset Code', 'Suburb', 'Status', 'Blockages', 'Latitude', 'Longitude']],
+        body: manholeData,
+        theme: 'striped',
+        headStyles: { fillColor: [34, 139, 34] }
+    });
+    
+    doc.save(`sewer_report_${new Date().toISOString().slice(0, 10)}.pdf`);
+}
+
+// ============================================
+// CSV EXPORT
+// ============================================
+
+function exportCSV() {
+    const headers = ['Asset Code', 'Suburb', 'Status', 'Blockages', 'Latitude', 'Longitude'];
+    const rows = allManholes.map(m => [
+        m.asset_code,
+        m.suburb,
+        m.status,
+        m.blockages || 0,
+        m.lat,
+        m.lng
+    ]);
+    
+    const csvContent = [headers, ...rows].map(row => row.join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `sewer_data_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+// ============================================
+// EVENT LISTENERS SETUP
+// ============================================
+
+function setupEventListeners() {
+    // Base map switcher
+    const baseMapSelect = document.getElementById('baseMapSelect');
+    if (baseMapSelect) {
+        baseMapSelect.addEventListener('change', (e) => {
+            if (window.MapView) MapView.switchBaseMap(e.target.value);
+        });
+    }
+    
+    // Layer toggle buttons (if they exist)
+    const toggleManholes = document.getElementById('toggleManholesBtn');
+    if (toggleManholes) {
+        toggleManholes.addEventListener('click', () => {
+            showManholes = !showManholes;
+            loadFilteredLayers();
+        });
+    }
+    
+    const togglePipelines = document.getElementById('togglePipelinesBtn');
+    if (togglePipelines) {
+        togglePipelines.addEventListener('click', () => {
+            showPipelines = !showPipelines;
+            loadFilteredLayers();
+        });
+    }
+    
+    const toggleSuburbs = document.getElementById('toggleSuburbsBtn');
+    if (toggleSuburbs) {
+        toggleSuburbs.addEventListener('click', () => {
+            showSuburbs = !showSuburbs;
+            loadFilteredLayers();
+        });
+    }
+    
+    // Toolbar buttons
+    const fitBoundsBtn = document.getElementById('fitBoundsBtn');
+    if (fitBoundsBtn) {
+        fitBoundsBtn.addEventListener('click', () => {
+            if (window.MapView && MapView.fitToBounds) MapView.fitToBounds();
+        });
+    }
+    
+    const heatmapBtn = document.getElementById('heatmapBtn');
+    if (heatmapBtn) {
+        heatmapBtn.addEventListener('click', () => {
+            const heatPoints = allManholes.map(m => [m.lat, m.lng, m.blockages || 1]);
+            if (window.MapView && MapView.showHeatmapFromManholes) {
+                MapView.showHeatmapFromManholes(heatPoints);
+            }
+        });
+    }
+    
+    const clearHeatmapBtn = document.getElementById('clearHeatmapBtn');
+    if (clearHeatmapBtn) {
+        clearHeatmapBtn.addEventListener('click', () => {
+            if (window.MapView && MapView.clearHeatmap) MapView.clearHeatmap();
+        });
+    }
+    
+    const exportCSVBtn = document.getElementById('exportCSVBtn');
+    if (exportCSVBtn) exportCSVBtn.addEventListener('click', exportCSV);
+    
+    const printMapBtn = document.getElementById('printMapBtn');
+    if (printMapBtn) printMapBtn.addEventListener('click', () => window.print());
+    
+    // Listen for filter changes
+    document.addEventListener('filtersChanged', () => {
+        loadFilteredLayers();
+        updateChartsAndSummary();
+    });
+    
+    // Listen for report processed events
+    document.addEventListener('reportProcessed', async () => {
+        await fetchAllData();
+        loadFilteredLayers();
+        updateChartsAndSummary();
+    });
+}
+
+// ============================================
+// INITIALIZATION
+// ============================================
+
+async function initDashboard() {
+    console.log('Initializing dashboard...');
+    
+    // Fetch all data from backend
+    await fetchAllData();
+    
+    // Initialize map if MapView exists
+    if (window.MapView && MapView.init) {
+        MapView.init(-18.9735, 32.6705, 13);
+    }
+    
+    // Initialize filters if they exist
+    if (window.Filters && Filters.init) {
+        Filters.init();
+    }
+    
+    // Initialize charts
+    initCharts();
+    
+    // Load initial layers
+    setTimeout(() => {
+        loadFilteredLayers();
+        updateChartsAndSummary();
+    }, 500);
+    
+    // Setup event listeners
+    setupEventListeners();
+    
+    console.log('Dashboard initialized with real API data');
+}
+
+// Start the dashboard
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initDashboard);
+} else {
+    initDashboard();
+}

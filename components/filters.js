@@ -1,520 +1,365 @@
-// components/filters.js - Enhanced Filter with Modal Popup
-// Includes: Suburb, Diameter, Material, Status, Pipe Size, Depth Range, Date Range, Inspector, Block Status, Priority
+// components/filters.js - Complete Working Cascading Filter
+// Matches Tactical Ops Theme
 
-// ============================================
-// API CONFIGURATION (adjust to your backend URL)
-// ============================================
-const API_BASE_URL = window.location.hostname === 'localhost'
-  ? 'http://localhost:5000/api'
-  : 'https://mutare-backend.onrender.com/api';  // change to your deployed backend
+const API_BASE_URL = 'http://localhost:5000/api';
 
+// Current active filters
 let currentFilters = {
-    // Location filters
-    suburb: 'all',
+    suburb_nam: 'all',
     township: 'all',
+    zone: 'all',
     ward: 'all',
     op_zone: 'all',
-    
-    // Physical filters
-    diameter: 'all',
-    diameter_min: '',
-    diameter_max: '',
-    material: 'all',
+    manhole_status: 'all',
+    manhole_depth_min: '',
+    manhole_depth_max: '',
+    pipe_material: 'all',
     pipe_size: 'all',
-    length_range: 'all',
-    depth_range: 'all',
-    
-    // Status filters
-    status: 'all',
-    block_status: 'all',
-    priority: 'all',
-    
-    // Personnel filters
+    pipe_status: 'all',
+    length_min: '',
+    length_max: '',
     inspector: 'all',
-    assigned_to: 'all',
-    
-    // Date filters
     date_from: '',
     date_to: '',
-    
-    // Search
-    search_text: '',
-    
-    // Multiple selection
-    selected_suburbs: [],
-    selected_materials: []
+    search_text: ''
 };
 
-// ============================================
-// Filter options (unchanged – used only for UI)
-// ============================================
-
-const filterOptions = {
-    suburbs: ['CBD', 'Sakubva', 'Dangamvura', 'Chikanga', 'Yeovil', 'Bordervale', 'Westlea', 'Hillside'],
-    townships: ['Central', 'East', 'West', 'North', 'South'],
-    wards: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-    op_zones: ['A', 'B', 'C', 'D', 'E', 'F'],
-    materials: ['concrete', 'PVC', 'asbestos', 'clay', 'cast_iron', 'HDPE', 'steel'],
-    statuses: ['critical', 'warning', 'good'],
-    block_statuses: ['blocked', 'partial', 'clear', 'unknown'],
-    priorities: ['urgent', 'high', 'medium', 'low'],
-    inspectors: ['John Smith', 'Mary Jones', 'Peter Moyo', 'Tendai Ncube', 'Charles Dube'],
+// Filter options data
+let filterData = {
+    suburbs: [],
+    townships: [],
+    zones: [],
+    wards: [],
+    op_zones: [],
+    inspectors: [],
+    manhole_statuses: ['good', 'warning', 'critical', 'blocked', 'partial'],
     pipe_materials: ['E/W', 'PVC', 'Concrete', 'Cast Iron', 'HDPE'],
     pipe_sizes: [50, 75, 100, 150, 200, 250, 300, 375, 450, 525, 600],
-    length_ranges: [
-        { value: 'short', label: '< 50 m', min: 0, max: 50 },
-        { value: 'medium', label: '50 - 100 m', min: 50, max: 100 },
-        { value: 'long', label: '> 100 m', min: 100, max: 9999 }
-    ],
-    depth_ranges: [
-        { value: 'shallow', label: '< 2 m', min: 0, max: 2 },
-        { value: 'medium', label: '2 - 4 m', min: 2, max: 4 },
-        { value: 'deep', label: '> 4 m', min: 4, max: 100 }
-    ]
+    pipe_statuses: ['good', 'warning', 'critical', 'blocked', 'partial']
 };
 
+let tempFilters = { ...currentFilters };
+let currentData = { manholes: [], pipelines: [] };
+
 // ============================================
-// FILTER FUNCTIONS (NOW USE BACKEND API)
+// LOAD DATA FROM BACKEND
+// ============================================
+
+async function loadFilterData() {
+    console.log('Loading filter data from backend...');
+    
+    try {
+        // Load filter options from backend
+        const response = await fetch(`${API_BASE_URL}/suburbs/filter-options`);
+        if (response.ok) {
+            const data = await response.json();
+            filterData.suburbs = data.suburbs || [];
+            filterData.townships = data.townships || [];
+            filterData.zones = data.zones || [];
+            filterData.wards = data.wards || [];
+            filterData.op_zones = data.op_zones || [];
+            console.log('Filter options loaded:', filterData);
+        }
+        
+        // Load inspectors from manholes
+        const manholesRes = await fetch(`${API_BASE_URL}/manholes/list`);
+        if (manholesRes.ok) {
+            const manholes = await manholesRes.json();
+            filterData.inspectors = [...new Set(manholes.map(m => m.inspector).filter(i => i))];
+        }
+        
+    } catch (error) {
+        console.error('Error loading filter data:', error);
+    }
+}
+
+// ============================================
+// CASCADING FILTERS
+// ============================================
+
+async function updateCascadingOptions(suburb) {
+    if (!suburb || suburb === 'all') {
+        // Reset to all options
+        const response = await fetch(`${API_BASE_URL}/suburbs/filter-options`);
+        if (response.ok) {
+            const data = await response.json();
+            filterData.townships = data.townships || [];
+            filterData.zones = data.zones || [];
+            filterData.wards = data.wards || [];
+            filterData.op_zones = data.op_zones || [];
+        }
+    } else {
+        // Get options filtered by suburb
+        try {
+            const response = await fetch(`${API_BASE_URL}/suburbs/cascade?suburb=${encodeURIComponent(suburb)}`);
+            if (response.ok) {
+                const data = await response.json();
+                filterData.townships = data.townships || [];
+                filterData.zones = data.zones || [];
+                filterData.wards = data.wards || [];
+                filterData.op_zones = data.op_zones || [];
+                console.log(`Cascading options for ${suburb}:`, filterData);
+            }
+        } catch (error) {
+            console.error('Error updating cascading options:', error);
+        }
+    }
+    
+    // Update dropdown UIs
+    if (townshipSelect) townshipSelect.updateOptions(filterData.townships);
+    if (zoneSelect) zoneSelect.updateOptions(filterData.zones);
+    if (wardSelect) wardSelect.updateOptions(filterData.wards.map(w => `Ward ${w}`));
+    if (opZoneSelect) opZoneSelect.updateOptions(filterData.op_zones.map(oz => `Op Zone ${oz}`));
+}
+
+// ============================================
+// API FUNCTIONS
 // ============================================
 
 async function getFilteredManholes() {
-    // Build query parameters from currentFilters
     const params = new URLSearchParams();
-    if (currentFilters.suburb !== 'all') params.append('suburb', currentFilters.suburb);
-    if (currentFilters.township !== 'all') params.append('township', currentFilters.township);
-    if (currentFilters.ward !== 'all') params.append('ward', currentFilters.ward);
-    if (currentFilters.op_zone !== 'all') params.append('op_zone', currentFilters.op_zone);
-    
-    if (currentFilters.diameter !== 'all') params.append('diameter', currentFilters.diameter);
-    if (currentFilters.diameter_min) params.append('diameter_min', currentFilters.diameter_min);
-    if (currentFilters.diameter_max) params.append('diameter_max', currentFilters.diameter_max);
-    if (currentFilters.material !== 'all') params.append('material', currentFilters.material);
-    if (currentFilters.depth_range !== 'all') params.append('depth_range', currentFilters.depth_range);
-    
-    if (currentFilters.status !== 'all') params.append('status', currentFilters.status);
-    if (currentFilters.block_status !== 'all') params.append('block_status', currentFilters.block_status);
-    if (currentFilters.priority !== 'all') params.append('priority', currentFilters.priority);
-    
+    if (currentFilters.suburb_nam && currentFilters.suburb_nam !== 'all') params.append('suburb', currentFilters.suburb_nam);
+    if (currentFilters.township && currentFilters.township !== 'all') params.append('township', currentFilters.township);
+    if (currentFilters.zone && currentFilters.zone !== 'all') params.append('zone', currentFilters.zone);
+    if (currentFilters.ward && currentFilters.ward !== 'all') params.append('ward', currentFilters.ward);
+    if (currentFilters.op_zone && currentFilters.op_zone !== 'all') params.append('op_zone', currentFilters.op_zone);
+    if (currentFilters.manhole_status !== 'all') params.append('status', currentFilters.manhole_status);
+    if (currentFilters.manhole_depth_min) params.append('depth_min', currentFilters.manhole_depth_min);
+    if (currentFilters.manhole_depth_max) params.append('depth_max', currentFilters.manhole_depth_max);
     if (currentFilters.inspector !== 'all') params.append('inspector', currentFilters.inspector);
-    
     if (currentFilters.date_from) params.append('date_from', currentFilters.date_from);
     if (currentFilters.date_to) params.append('date_to', currentFilters.date_to);
-    
     if (currentFilters.search_text) params.append('search', currentFilters.search_text);
     
-    if (currentFilters.selected_suburbs.length) params.append('selected_suburbs', currentFilters.selected_suburbs.join(','));
-    if (currentFilters.selected_materials.length) params.append('selected_materials', currentFilters.selected_materials.join(','));
-    
-    // Always request only manholes
-    params.append('asset_type', 'manhole');
-    
-    const url = `${API_BASE_URL}/assets?${params.toString()}`;
-    const response = await fetch(url);
-    if (!response.ok) throw new Error('Failed to fetch manholes');
-    const data = await response.json();
-    return data;  // backend returns array of manhole objects
+    try {
+        const response = await fetch(`${API_BASE_URL}/manholes/list?${params.toString()}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        currentData.manholes = data;
+        return data;
+    } catch (error) {
+        console.error('Error fetching manholes:', error);
+        return [];
+    }
 }
 
 async function getFilteredPipelines() {
     const params = new URLSearchParams();
-    if (currentFilters.pipe_size !== 'all') params.append('pipe_size', currentFilters.pipe_size);
-    if (currentFilters.pipe_mat !== 'all') params.append('pipe_mat', currentFilters.pipe_mat);
-    if (currentFilters.block_status !== 'all') params.append('block_status', currentFilters.block_status);
-    if (currentFilters.length_range !== 'all') params.append('length_range', currentFilters.length_range);
-    if (currentFilters.status !== 'all') params.append('status', currentFilters.status);
+    if (currentFilters.suburb_nam && currentFilters.suburb_nam !== 'all') params.append('suburb', currentFilters.suburb_nam);
+    if (currentFilters.township && currentFilters.township !== 'all') params.append('township', currentFilters.township);
+    if (currentFilters.pipe_material !== 'all') params.append('material', currentFilters.pipe_material);
+    if (currentFilters.pipe_size !== 'all') params.append('size', currentFilters.pipe_size);
+    if (currentFilters.pipe_status !== 'all') params.append('status', currentFilters.pipe_status);
+    if (currentFilters.length_min) params.append('length_min', currentFilters.length_min);
+    if (currentFilters.length_max) params.append('length_max', currentFilters.length_max);
+    if (currentFilters.search_text) params.append('search', currentFilters.search_text);
     
-    params.append('asset_type', 'pipeline');
-    
-    const url = `${API_BASE_URL}/assets?${params.toString()}`;
-    const response = await fetch(url);
-    if (!response.ok) throw new Error('Failed to fetch pipelines');
-    const data = await response.json();
-    return data;
-}
-
-async function getAllManholes() {
-    const response = await fetch(`${API_BASE_URL}/assets?asset_type=manhole`);
-    if (!response.ok) throw new Error('Failed to fetch all manholes');
-    return await response.json();
-}
-
-async function getAllPipelines() {
-    const response = await fetch(`${API_BASE_URL}/assets?asset_type=pipeline`);
-    if (!response.ok) throw new Error('Failed to fetch all pipelines');
-    return await response.json();
-}
-
-function getCurrentFilters() {
-    return currentFilters;
-}
-
-// ============================================
-// MODAL FUNCTIONS (unchanged)
-// ============================================
-
-let tempFilters = { ...currentFilters };
-
-function openFilterModal() {
-    console.log('Opening filter modal...');
-    tempFilters = JSON.parse(JSON.stringify(currentFilters));
-    updateModalUI();
-    const modal = document.getElementById('filterModal');
-    if (modal) {
-        modal.style.display = 'flex';
-        console.log('Modal displayed');
-    } else {
-        console.error('Modal element not found!');
-        createModalIfNotExists();
-    }
-}
-
-function createModalIfNotExists() {
-    const existingModal = document.getElementById('filterModal');
-    if (!existingModal) {
-        console.log('Creating modal dynamically...');
-        const modalHtml = `
-            <div id="filterModal" class="filter-modal" style="display:none;">
-                <div class="filter-modal-content">
-                    <div class="filter-modal-header">
-                        <h3>🔍 ADVANCED FILTERS</h3>
-                        <button id="closeFilterModal" class="close-modal">&times;</button>
-                    </div>
-                    <div class="filter-modal-body">
-                        <p>Filter options will appear here. Please refresh the page.</p>
-                    </div>
-                    <div class="filter-modal-footer">
-                        <button id="resetFiltersBtn" class="reset-btn">RESET ALL</button>
-                        <button id="applyFiltersBtn" class="apply-btn">APPLY FILTERS</button>
-                    </div>
-                </div>
-            </div>
-        `;
-        document.body.insertAdjacentHTML('beforeend', modalHtml);
-        attachEvents();
-        document.getElementById('filterModal').style.display = 'flex';
-    }
-}
-
-function closeFilterModal() {
-    const modal = document.getElementById('filterModal');
-    if (modal) {
-        modal.style.display = 'none';
-    }
-}
-
-function applyFilters() {
-    console.log('Applying filters:', tempFilters);
-    currentFilters = JSON.parse(JSON.stringify(tempFilters));
-    updateFilterButtonText();
-    closeFilterModal();
-    triggerFilterChange();
-}
-
-function resetFilters() {
-    console.log('Resetting filters');
-    tempFilters = {
-        suburb: 'all', township: 'all', ward: 'all', op_zone: 'all',
-        diameter: 'all', diameter_min: '', diameter_max: '', material: 'all',
-        pipe_size: 'all', length_range: 'all', depth_range: 'all',
-        status: 'all', block_status: 'all', priority: 'all',
-        inspector: 'all', assigned_to: 'all',
-        date_from: '', date_to: '',
-        search_text: '',
-        selected_suburbs: [], selected_materials: []
-    };
-    updateModalUI();
-}
-
-function updateTempFilter(filterType, value) {
-    console.log('Updating filter:', filterType, value);
-    tempFilters[filterType] = value;
-    updateModalUI();
-}
-
-function toggleArrayFilter(filterType, value) {
-    if (!tempFilters[filterType]) tempFilters[filterType] = [];
-    const index = tempFilters[filterType].indexOf(value);
-    if (index === -1) {
-        tempFilters[filterType].push(value);
-    } else {
-        tempFilters[filterType].splice(index, 1);
-    }
-    updateModalUI();
-}
-
-function updateModalUI() {
-    updateButtonGroup('#modalSuburbFilters', 'data-suburb', tempFilters.suburb);
-    updateButtonGroup('#modalTownshipFilters', 'data-township', tempFilters.township);
-    updateButtonGroup('#modalWardFilters', 'data-ward', tempFilters.ward);
-    updateButtonGroup('#modalOpZoneFilters', 'data-op_zone', tempFilters.op_zone);
-    updateButtonGroup('#modalDiameterFilters', 'data-diameter', tempFilters.diameter);
-    updateButtonGroup('#modalMaterialFilters', 'data-material', tempFilters.material);
-    updateButtonGroup('#modalStatusFilters', 'data-status', tempFilters.status);
-    updateButtonGroup('#modalBlockStatusFilters', 'data-block_status', tempFilters.block_status);
-    updateButtonGroup('#modalPriorityFilters', 'data-priority', tempFilters.priority);
-    updateButtonGroup('#modalInspectorFilters', 'data-inspector', tempFilters.inspector);
-    updateButtonGroup('#modalPipeSizeFilters', 'data-pipe_size', tempFilters.pipe_size);
-    updateButtonGroup('#modalPipeMaterialFilters', 'data-pipe_mat', tempFilters.pipe_mat);
-    updateButtonGroup('#modalLengthRangeFilters', 'data-length_range', tempFilters.length_range);
-    updateButtonGroup('#modalDepthRangeFilters', 'data-depth_range', tempFilters.depth_range);
-    
-    const diameterMin = document.getElementById('diameterMinInput');
-    if (diameterMin) diameterMin.value = tempFilters.diameter_min;
-    const diameterMax = document.getElementById('diameterMaxInput');
-    if (diameterMax) diameterMax.value = tempFilters.diameter_max;
-    const dateFrom = document.getElementById('dateFromInput');
-    if (dateFrom) dateFrom.value = tempFilters.date_from;
-    const dateTo = document.getElementById('dateToInput');
-    if (dateTo) dateTo.value = tempFilters.date_to;
-    const searchText = document.getElementById('searchTextInput');
-    if (searchText) searchText.value = tempFilters.search_text;
-}
-
-function updateButtonGroup(selector, attribute, activeValue) {
-    const buttons = document.querySelectorAll(selector);
-    buttons.forEach(btn => {
-        const value = btn.getAttribute(attribute);
-        if (value === activeValue) {
-            btn.classList.add('active');
-        } else {
-            btn.classList.remove('active');
-        }
-    });
-}
-
-function updateFilterButtonText() {
-    const filterBtn = document.getElementById('mainFilterBtn');
-    if (!filterBtn) return;
-    
-    const activeCount = Object.entries(currentFilters).filter(([key, value]) => {
-        if (key === 'selected_suburbs' || key === 'selected_materials') return value.length > 0;
-        return value && value !== 'all' && value !== '';
-    }).length;
-    
-    if (activeCount === 0) {
-        filterBtn.innerHTML = '🔍 FILTER';
-        filterBtn.classList.remove('active-filter');
-    } else {
-        filterBtn.innerHTML = `🔍 FILTER (${activeCount})`;
-        filterBtn.classList.add('active-filter');
-    }
-}
-
-async function triggerFilterChange() {
     try {
-        const manholes = await getFilteredManholes();
-        const pipelines = await getFilteredPipelines();
-        const event = new CustomEvent('filtersChanged', {
-            detail: {
-                manholes: manholes,
-                pipelines: pipelines,
-                filters: currentFilters
-            }
-        });
-        document.dispatchEvent(event);
-    } catch (err) {
-        console.error('Error applying filters:', err);
+        const response = await fetch(`${API_BASE_URL}/pipelines/list?${params.toString()}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        currentData.pipelines = data;
+        return data;
+    } catch (error) {
+        console.error('Error fetching pipelines:', error);
+        return [];
     }
 }
 
 // ============================================
-// RENDER HTML (unchanged)
+// EXPORT FUNCTIONS
 // ============================================
 
-function render() {
+function exportToJSON() {
+    const exportData = { filters: currentFilters, data: currentData, exported_at: new Date().toISOString() };
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `sewer_export_${new Date().toISOString().slice(0,19)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+function exportToCSV() {
+    const rows = [['Type', 'ID', 'Name', 'Suburb', 'Township', 'Status', 'Material', 'Size', 'Depth/Length', 'Inspector', 'Date'].join(',')];
+    
+    currentData.manholes.forEach(m => {
+        rows.push(['Manhole', m.id || m.manhole_id, m.name, m.suburb, '', m.status, '', '', m.depth, m.inspector, m.inspection_date].join(','));
+    });
+    
+    currentData.pipelines.forEach(p => {
+        rows.push(['Pipeline', p.id || p.pipe_id, p.name, '', '', p.status, p.material, p.diameter, p.length, '', ''].join(','));
+    });
+    
+    const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `sewer_export_${new Date().toISOString().slice(0,19)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+function exportToPDF() { window.print(); }
+function exportToSHP() { alert('Shapefile export - Feature coming soon'); }
+
+// ============================================
+// RENDER MODAL
+// ============================================
+
+function renderModal() {
     return `
-        <div class="filter-section">
-            <button id="mainFilterBtn" class="filter-main-btn">🔍 FILTER</button>
-        </div>
-        
-        <div id="filterModal" class="filter-modal" style="display:none;">
+        <div id="filterModal" class="filter-modal">
             <div class="filter-modal-content">
                 <div class="filter-modal-header">
-                    <h3>🔍 ADVANCED FILTERS</h3>
-                    <button id="closeFilterModal" class="close-modal">&times;</button>
+                    <h3>🔍 FILTERS</h3>
+                    <button id="closeFilterModal" class="close-modal">✕</button>
                 </div>
-                
                 <div class="filter-modal-body">
+                    <!-- EXPORT SECTION -->
+                    <div class="filter-section-group">
+                        <h4>📤 EXPORT DATA</h4>
+                        <div class="export-buttons">
+                            <button id="exportJSONBtn" class="export-btn json">JSON</button>
+                            <button id="exportCSVBtn" class="export-btn csv">CSV</button>
+                            <button id="exportPDFBtn" class="export-btn pdf">PDF</button>
+                            <button id="exportSHPBtn" class="export-btn shp">SHP</button>
+                        </div>
+                    </div>
+                    
                     <!-- LOCATION SECTION -->
                     <div class="filter-section-group">
                         <h4>📍 LOCATION</h4>
-                        
                         <div class="filter-group">
                             <label>Suburb</label>
-                            <div class="filter-buttons" id="modalSuburbFilters">
-                                <button class="filter-btn active" data-suburb="all">ALL</button>
-                                ${filterOptions.suburbs.map(s => `<button class="filter-btn" data-suburb="${s}">${s}</button>`).join('')}
-                            </div>
+                            <select id="suburbSelect" class="filter-input">
+                                <option value="all">ALL</option>
+                                ${filterData.suburbs.map(s => `<option value="${s}">${s}</option>`).join('')}
+                            </select>
                         </div>
-                        
                         <div class="filter-group">
                             <label>Township</label>
-                            <div class="filter-buttons" id="modalTownshipFilters">
-                                <button class="filter-btn active" data-township="all">ALL</button>
-                                ${filterOptions.townships.map(t => `<button class="filter-btn" data-township="${t}">${t}</button>`).join('')}
-                            </div>
+                            <select id="townshipSelect" class="filter-input">
+                                <option value="all">ALL</option>
+                                ${filterData.townships.map(t => `<option value="${t}">${t}</option>`).join('')}
+                            </select>
                         </div>
-                        
                         <div class="filter-row">
+                            <div class="filter-group half">
+                                <label>Zone</label>
+                                <select id="zoneSelect" class="filter-input">
+                                    <option value="all">ALL</option>
+                                    ${filterData.zones.map(z => `<option value="${z}">Zone ${z}</option>`).join('')}
+                                </select>
+                            </div>
                             <div class="filter-group half">
                                 <label>Ward</label>
-                                <div class="filter-buttons" id="modalWardFilters">
-                                    <button class="filter-btn active" data-ward="all">ALL</button>
-                                    ${filterOptions.wards.map(w => `<button class="filter-btn" data-ward="${w}">${w}</button>`).join('')}
-                                </div>
+                                <select id="wardSelect" class="filter-input">
+                                    <option value="all">ALL</option>
+                                    ${filterData.wards.map(w => `<option value="${w}">Ward ${w}</option>`).join('')}
+                                </select>
                             </div>
-                            <div class="filter-group half">
-                                <label>Operational Zone</label>
-                                <div class="filter-buttons" id="modalOpZoneFilters">
-                                    <button class="filter-btn active" data-op_zone="all">ALL</button>
-                                    ${filterOptions.op_zones.map(z => `<button class="filter-btn" data-op_zone="${z}">${z}</button>`).join('')}
-                                </div>
-                            </div>
+                        </div>
+                        <div class="filter-group">
+                            <label>Operational Zone</label>
+                            <select id="opZoneSelect" class="filter-input">
+                                <option value="all">ALL</option>
+                                ${filterData.op_zones.map(oz => `<option value="${oz}">Op Zone ${oz}</option>`).join('')}
+                            </select>
                         </div>
                     </div>
                     
-                    <!-- PHYSICAL ATTRIBUTES SECTION -->
+                    <!-- MANHOLE SECTION -->
                     <div class="filter-section-group">
-                        <h4>📐 PHYSICAL ATTRIBUTES</h4>
-                        
-                        <div class="filter-group">
-                            <label>Diameter Range</label>
-                            <div class="filter-buttons" id="modalDiameterFilters">
-                                <button class="filter-btn active" data-diameter="all">ALL</button>
-                                <button class="filter-btn" data-diameter="small">&lt; 100 mm</button>
-                                <button class="filter-btn" data-diameter="medium">100 - 150 mm</button>
-                                <button class="filter-btn" data-diameter="large">&gt; 150 mm</button>
-                            </div>
-                        </div>
-                        
-                        <div class="filter-row">
-                            <div class="filter-group half">
-                                <label>Min Diameter (mm)</label>
-                                <input type="number" id="diameterMinInput" class="filter-input" placeholder="e.g., 100">
-                            </div>
-                            <div class="filter-group half">
-                                <label>Max Diameter (mm)</label>
-                                <input type="number" id="diameterMaxInput" class="filter-input" placeholder="e.g., 300">
-                            </div>
-                        </div>
-                        
-                        <div class="filter-group">
-                            <label>Material</label>
-                            <div class="filter-buttons" id="modalMaterialFilters">
-                                <button class="filter-btn active" data-material="all">ALL</button>
-                                ${filterOptions.materials.map(m => `<button class="filter-btn" data-material="${m}">${m.toUpperCase()}</button>`).join('')}
-                            </div>
-                        </div>
-                        
-                        <div class="filter-group">
-                            <label>Depth Range</label>
-                            <div class="filter-buttons" id="modalDepthRangeFilters">
-                                <button class="filter-btn active" data-depth_range="all">ALL</button>
-                                ${filterOptions.depth_ranges.map(d => `<button class="filter-btn" data-depth_range="${d.value}">${d.label}</button>`).join('')}
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- STATUS SECTION -->
-                    <div class="filter-section-group">
-                        <h4>⚠️ STATUS</h4>
-                        
-                        <div class="filter-group">
-                            <label>Risk Status</label>
-                            <div class="filter-buttons" id="modalStatusFilters">
-                                <button class="filter-btn active" data-status="all">ALL</button>
-                                ${filterOptions.statuses.map(s => `<button class="filter-btn" data-status="${s}">${s.toUpperCase()}</button>`).join('')}
-                            </div>
-                        </div>
-                        
+                        <h4>🕳️ MANHOLES</h4>
                         <div class="filter-group">
                             <label>Blockage Status</label>
-                            <div class="filter-buttons" id="modalBlockStatusFilters">
-                                <button class="filter-btn active" data-block_status="all">ALL</button>
-                                ${filterOptions.block_statuses.map(b => `<button class="filter-btn" data-block_status="${b}">${b.toUpperCase()}</button>`).join('')}
-                            </div>
+                            <select id="manholeStatusSelect" class="filter-input">
+                                <option value="all">ALL</option>
+                                ${filterData.manhole_statuses.map(s => `<option value="${s}">${s.toUpperCase()}</option>`).join('')}
+                            </select>
                         </div>
-                        
-                        <div class="filter-group">
-                            <label>Priority</label>
-                            <div class="filter-buttons" id="modalPriorityFilters">
-                                <button class="filter-btn active" data-priority="all">ALL</button>
-                                ${filterOptions.priorities.map(p => `<button class="filter-btn" data-priority="${p}">${p.toUpperCase()}</button>`).join('')}
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- PIPELINE SPECIFIC SECTION -->
-                    <div class="filter-section-group">
-                        <h4>📏 PIPELINE SPECIFIC</h4>
-                        
-                        <div class="filter-group">
-                            <label>Pipe Size (mm)</label>
-                            <div class="filter-buttons" id="modalPipeSizeFilters">
-                                <button class="filter-btn active" data-pipe_size="all">ALL</button>
-                                ${filterOptions.pipe_sizes.map(s => `<button class="filter-btn" data-pipe_size="${s}">${s}</button>`).join('')}
-                            </div>
-                        </div>
-                        
-                        <div class="filter-group">
-                            <label>Pipe Material</label>
-                            <div class="filter-buttons" id="modalPipeMaterialFilters">
-                                <button class="filter-btn active" data-pipe_mat="all">ALL</button>
-                                ${filterOptions.pipe_materials.map(m => `<button class="filter-btn" data-pipe_mat="${m}">${m}</button>`).join('')}
-                            </div>
-                        </div>
-                        
-                        <div class="filter-group">
-                            <label>Length Range</label>
-                            <div class="filter-buttons" id="modalLengthRangeFilters">
-                                <button class="filter-btn active" data-length_range="all">ALL</button>
-                                ${filterOptions.length_ranges.map(l => `<button class="filter-btn" data-length_range="${l.value}">${l.label}</button>`).join('')}
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- PERSONNEL SECTION -->
-                    <div class="filter-section-group">
-                        <h4>👤 PERSONNEL</h4>
-                        
-                        <div class="filter-group">
-                            <label>Inspector</label>
-                            <div class="filter-buttons" id="modalInspectorFilters">
-                                <button class="filter-btn active" data-inspector="all">ALL</button>
-                                ${filterOptions.inspectors.map(i => `<button class="filter-btn" data-inspector="${i}">${i}</button>`).join('')}
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- DATE SECTION -->
-                    <div class="filter-section-group">
-                        <h4>📅 INSPECTION DATE</h4>
-                        
                         <div class="filter-row">
                             <div class="filter-group half">
-                                <label>From Date</label>
-                                <input type="date" id="dateFromInput" class="filter-input">
+                                <label>Min Depth (m)</label>
+                                <input type="number" id="depthMinInput" class="filter-input" step="0.1" placeholder="e.g., 1.5">
                             </div>
                             <div class="filter-group half">
-                                <label>To Date</label>
-                                <input type="date" id="dateToInput" class="filter-input">
+                                <label>Max Depth (m)</label>
+                                <input type="number" id="depthMaxInput" class="filter-input" step="0.1" placeholder="e.g., 5">
                             </div>
+                        </div>
+                    </div>
+                    
+                    <!-- PIPELINE SECTION -->
+                    <div class="filter-section-group">
+                        <h4>📏 PIPELINES</h4>
+                        <div class="filter-group">
+                            <label>Pipe Material</label>
+                            <select id="pipeMaterialSelect" class="filter-input">
+                                <option value="all">ALL</option>
+                                ${filterData.pipe_materials.map(m => `<option value="${m}">${m}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label>Pipe Size (mm)</label>
+                            <select id="pipeSizeSelect" class="filter-input">
+                                <option value="all">ALL</option>
+                                ${filterData.pipe_sizes.map(s => `<option value="${s}">${s} mm</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label>Blockage Status</label>
+                            <select id="pipeStatusSelect" class="filter-input">
+                                <option value="all">ALL</option>
+                                ${filterData.pipe_statuses.map(s => `<option value="${s}">${s.toUpperCase()}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="filter-row">
+                            <div class="filter-group half">
+                                <label>Min Length (m)</label>
+                                <input type="number" id="lengthMinInput" class="filter-input" step="1" placeholder="e.g., 10">
+                            </div>
+                            <div class="filter-group half">
+                                <label>Max Length (m)</label>
+                                <input type="number" id="lengthMaxInput" class="filter-input" step="1" placeholder="e.g., 100">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- INSPECTOR SECTION -->
+                    <div class="filter-section-group">
+                        <h4>👤 INSPECTOR</h4>
+                        <div class="filter-group">
+                            <select id="inspectorSelect" class="filter-input">
+                                <option value="all">ALL</option>
+                                ${filterData.inspectors.map(i => `<option value="${i}">${i}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="date-range">
+                            <input type="date" id="dateFromInput" class="filter-input" placeholder="From Date">
+                            <input type="date" id="dateToInput" class="filter-input" placeholder="To Date">
                         </div>
                     </div>
                     
                     <!-- SEARCH SECTION -->
                     <div class="filter-section-group">
-                        <h4>🔎 TEXT SEARCH</h4>
-                        
+                        <h4>🔎 SEARCH</h4>
                         <div class="filter-group">
-                            <input type="text" id="searchTextInput" class="filter-input" placeholder="Search by ID, suburb, material...">
+                            <input type="text" id="searchTextInput" class="filter-input" placeholder="Search by ID, suburb, pipe ID...">
                         </div>
                     </div>
+                    
+                    <!-- ACTIVE FILTERS SUMMARY -->
+                    <div id="filterSummary" class="filter-summary" style="display: none;">
+                        <div class="filter-summary-title">Active Filters:</div>
+                        <div id="filterTags" class="filter-tags"></div>
+                    </div>
                 </div>
-                
                 <div class="filter-modal-footer">
-                    <button id="resetFiltersBtn" class="reset-btn">RESET ALL</button>
-                    <button id="applyFiltersBtn" class="apply-btn">APPLY FILTERS</button>
+                    <button id="resetFiltersBtn" class="reset-btn">🗑️ RESET</button>
+                    <button id="applyFiltersBtn" class="apply-btn">✅ APPLY</button>
                 </div>
             </div>
         </div>
@@ -522,70 +367,185 @@ function render() {
 }
 
 // ============================================
-// ATTACH EVENTS (unchanged)
+// UPDATE UI FUNCTIONS
 // ============================================
 
-function attachEvents() {
-    const mainBtn = document.getElementById('mainFilterBtn');
-    if (mainBtn) {
-        mainBtn.addEventListener('click', openFilterModal);
-        console.log('Main filter button attached');
+function updateFilterSummary() {
+    const activeFilters = [];
+    if (tempFilters.suburb_nam && tempFilters.suburb_nam !== 'all') activeFilters.push(`Suburb: ${tempFilters.suburb_nam}`);
+    if (tempFilters.township && tempFilters.township !== 'all') activeFilters.push(`Township: ${tempFilters.township}`);
+    if (tempFilters.zone && tempFilters.zone !== 'all') activeFilters.push(`Zone: ${tempFilters.zone}`);
+    if (tempFilters.ward && tempFilters.ward !== 'all') activeFilters.push(`Ward: ${tempFilters.ward}`);
+    if (tempFilters.op_zone && tempFilters.op_zone !== 'all') activeFilters.push(`Op Zone: ${tempFilters.op_zone}`);
+    if (tempFilters.manhole_status && tempFilters.manhole_status !== 'all') activeFilters.push(`Manhole: ${tempFilters.manhole_status}`);
+    if (tempFilters.pipe_material && tempFilters.pipe_material !== 'all') activeFilters.push(`Material: ${tempFilters.pipe_material}`);
+    if (tempFilters.pipe_size && tempFilters.pipe_size !== 'all') activeFilters.push(`Size: ${tempFilters.pipe_size}mm`);
+    if (tempFilters.inspector && tempFilters.inspector !== 'all') activeFilters.push(`Inspector: ${tempFilters.inspector}`);
+    if (tempFilters.date_from) activeFilters.push(`From: ${tempFilters.date_from}`);
+    if (tempFilters.date_to) activeFilters.push(`To: ${tempFilters.date_to}`);
+    if (tempFilters.search_text) activeFilters.push(`Search: ${tempFilters.search_text}`);
+    
+    const summaryDiv = document.getElementById('filterSummary');
+    const tagsDiv = document.getElementById('filterTags');
+    
+    if (activeFilters.length > 0) {
+        summaryDiv.style.display = 'block';
+        tagsDiv.innerHTML = activeFilters.map(f => `<span class="filter-tag">${f}</span>`).join('');
+    } else {
+        summaryDiv.style.display = 'none';
     }
-    
-    const closeBtn = document.getElementById('closeFilterModal');
-    if (closeBtn) closeBtn.addEventListener('click', closeFilterModal);
-    
-    const applyBtn = document.getElementById('applyFiltersBtn');
-    if (applyBtn) applyBtn.addEventListener('click', applyFilters);
-    
-    const resetBtn = document.getElementById('resetFiltersBtn');
-    if (resetBtn) resetBtn.addEventListener('click', resetFilters);
-    
-    const modal = document.getElementById('filterModal');
-    if (modal) {
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) closeFilterModal();
-        });
-    }
-    
-    attachButtonEvents('#modalSuburbFilters', 'data-suburb', 'suburb');
-    attachButtonEvents('#modalTownshipFilters', 'data-township', 'township');
-    attachButtonEvents('#modalWardFilters', 'data-ward', 'ward');
-    attachButtonEvents('#modalOpZoneFilters', 'data-op_zone', 'op_zone');
-    attachButtonEvents('#modalDiameterFilters', 'data-diameter', 'diameter');
-    attachButtonEvents('#modalMaterialFilters', 'data-material', 'material');
-    attachButtonEvents('#modalStatusFilters', 'data-status', 'status');
-    attachButtonEvents('#modalBlockStatusFilters', 'data-block_status', 'block_status');
-    attachButtonEvents('#modalPriorityFilters', 'data-priority', 'priority');
-    attachButtonEvents('#modalInspectorFilters', 'data-inspector', 'inspector');
-    attachButtonEvents('#modalPipeSizeFilters', 'data-pipe_size', 'pipe_size');
-    attachButtonEvents('#modalPipeMaterialFilters', 'data-pipe_mat', 'pipe_mat');
-    attachButtonEvents('#modalLengthRangeFilters', 'data-length_range', 'length_range');
-    attachButtonEvents('#modalDepthRangeFilters', 'data-depth_range', 'depth_range');
-    
-    const diamMin = document.getElementById('diameterMinInput');
-    if (diamMin) diamMin.addEventListener('input', (e) => updateTempFilter('diameter_min', e.target.value));
-    
-    const diamMax = document.getElementById('diameterMaxInput');
-    if (diamMax) diamMax.addEventListener('input', (e) => updateTempFilter('diameter_max', e.target.value));
-    
-    const dateFrom = document.getElementById('dateFromInput');
-    if (dateFrom) dateFrom.addEventListener('input', (e) => updateTempFilter('date_from', e.target.value));
-    
-    const dateTo = document.getElementById('dateToInput');
-    if (dateTo) dateTo.addEventListener('input', (e) => updateTempFilter('date_to', e.target.value));
-    
-    const searchText = document.getElementById('searchTextInput');
-    if (searchText) searchText.addEventListener('input', (e) => updateTempFilter('search_text', e.target.value));
 }
 
-function attachButtonEvents(selector, attribute, filterType) {
-    const buttons = document.querySelectorAll(selector);
-    buttons.forEach(btn => {
-        btn.addEventListener('click', () => {
-            const value = btn.getAttribute(attribute);
-            updateTempFilter(filterType, value);
-        });
+function updateFilterButtonText() {
+    const filterBtn = document.getElementById('mainFilterBtn');
+    if (!filterBtn) return;
+    
+    let activeCount = 0;
+    const keys = ['suburb_nam', 'township', 'zone', 'ward', 'op_zone', 'manhole_status', 'pipe_material', 'pipe_size', 'inspector'];
+    keys.forEach(k => { if (currentFilters[k] && currentFilters[k] !== 'all') activeCount++; });
+    if (currentFilters.search_text) activeCount++;
+    if (currentFilters.manhole_depth_min) activeCount++;
+    if (currentFilters.length_min) activeCount++;
+    if (currentFilters.date_from) activeCount++;
+    
+    if (activeCount === 0) {
+        filterBtn.innerHTML = '🔍 FILTERS';
+        filterBtn.classList.remove('active-filter');
+    } else {
+        filterBtn.innerHTML = `🔍 FILTERS (${activeCount})`;
+        filterBtn.classList.add('active-filter');
+        
+        // Update summary text
+        const summaryDiv = document.getElementById('activeFiltersSummary');
+        if (summaryDiv) summaryDiv.innerHTML = `${activeCount} active filter(s)`;
+    }
+}
+
+// ============================================
+// MODAL FUNCTIONS
+// ============================================
+
+function openFilterModal() {
+    tempFilters = JSON.parse(JSON.stringify(currentFilters));
+    
+    // Set dropdown values
+    document.getElementById('suburbSelect').value = tempFilters.suburb_nam;
+    document.getElementById('townshipSelect').value = tempFilters.township;
+    document.getElementById('zoneSelect').value = tempFilters.zone;
+    document.getElementById('wardSelect').value = tempFilters.ward;
+    document.getElementById('opZoneSelect').value = tempFilters.op_zone;
+    document.getElementById('manholeStatusSelect').value = tempFilters.manhole_status;
+    document.getElementById('pipeMaterialSelect').value = tempFilters.pipe_material;
+    document.getElementById('pipeSizeSelect').value = tempFilters.pipe_size;
+    document.getElementById('pipeStatusSelect').value = tempFilters.pipe_status;
+    document.getElementById('inspectorSelect').value = tempFilters.inspector;
+    document.getElementById('depthMinInput').value = tempFilters.manhole_depth_min;
+    document.getElementById('depthMaxInput').value = tempFilters.manhole_depth_max;
+    document.getElementById('lengthMinInput').value = tempFilters.length_min;
+    document.getElementById('lengthMaxInput').value = tempFilters.length_max;
+    document.getElementById('dateFromInput').value = tempFilters.date_from;
+    document.getElementById('dateToInput').value = tempFilters.date_to;
+    document.getElementById('searchTextInput').value = tempFilters.search_text;
+    
+    updateFilterSummary();
+    
+    const modal = document.getElementById('filterModal');
+    if (modal) modal.style.display = 'flex';
+}
+
+function closeFilterModal() {
+    const modal = document.getElementById('filterModal');
+    if (modal) modal.style.display = 'none';
+}
+
+async function applyFilters() {
+    // Get values from dropdowns
+    tempFilters.suburb_nam = document.getElementById('suburbSelect').value;
+    tempFilters.township = document.getElementById('townshipSelect').value;
+    tempFilters.zone = document.getElementById('zoneSelect').value;
+    tempFilters.ward = document.getElementById('wardSelect').value;
+    tempFilters.op_zone = document.getElementById('opZoneSelect').value;
+    tempFilters.manhole_status = document.getElementById('manholeStatusSelect').value;
+    tempFilters.pipe_material = document.getElementById('pipeMaterialSelect').value;
+    tempFilters.pipe_size = document.getElementById('pipeSizeSelect').value;
+    tempFilters.pipe_status = document.getElementById('pipeStatusSelect').value;
+    tempFilters.inspector = document.getElementById('inspectorSelect').value;
+    tempFilters.manhole_depth_min = document.getElementById('depthMinInput').value;
+    tempFilters.manhole_depth_max = document.getElementById('depthMaxInput').value;
+    tempFilters.length_min = document.getElementById('lengthMinInput').value;
+    tempFilters.length_max = document.getElementById('lengthMaxInput').value;
+    tempFilters.date_from = document.getElementById('dateFromInput').value;
+    tempFilters.date_to = document.getElementById('dateToInput').value;
+    tempFilters.search_text = document.getElementById('searchTextInput').value;
+    
+    currentFilters = JSON.parse(JSON.stringify(tempFilters));
+    updateFilterButtonText();
+    closeFilterModal();
+    await triggerFilterChange();
+}
+
+function resetFilters() {
+    tempFilters = {
+        suburb_nam: 'all', township: 'all', zone: 'all', ward: 'all', op_zone: 'all',
+        manhole_status: 'all', manhole_depth_min: '', manhole_depth_max: '',
+        pipe_material: 'all', pipe_size: 'all', pipe_status: 'all',
+        length_min: '', length_max: '', inspector: 'all',
+        date_from: '', date_to: '', search_text: ''
+    };
+    
+    // Reset all dropdowns
+    document.getElementById('suburbSelect').value = 'all';
+    document.getElementById('townshipSelect').value = 'all';
+    document.getElementById('zoneSelect').value = 'all';
+    document.getElementById('wardSelect').value = 'all';
+    document.getElementById('opZoneSelect').value = 'all';
+    document.getElementById('manholeStatusSelect').value = 'all';
+    document.getElementById('pipeMaterialSelect').value = 'all';
+    document.getElementById('pipeSizeSelect').value = 'all';
+    document.getElementById('pipeStatusSelect').value = 'all';
+    document.getElementById('inspectorSelect').value = 'all';
+    document.getElementById('depthMinInput').value = '';
+    document.getElementById('depthMaxInput').value = '';
+    document.getElementById('lengthMinInput').value = '';
+    document.getElementById('lengthMaxInput').value = '';
+    document.getElementById('dateFromInput').value = '';
+    document.getElementById('dateToInput').value = '';
+    document.getElementById('searchTextInput').value = '';
+    
+    updateFilterSummary();
+    
+    // Reset cascading options
+    updateCascadingOptions(null);
+}
+
+async function triggerFilterChange() {
+    try {
+        const [manholes, pipelines] = await Promise.all([getFilteredManholes(), getFilteredPipelines()]);
+        document.dispatchEvent(new CustomEvent('filtersChanged', { 
+            detail: { manholes, pipelines, filters: currentFilters, count: manholes.length + pipelines.length }
+        }));
+        console.log(`Filter applied: ${manholes.length} manholes, ${pipelines.length} pipelines`);
+    } catch (err) {
+        console.error('Error applying filters:', err);
+    }
+}
+
+// ============================================
+// EVENT HANDLERS
+// ============================================
+
+function attachModalEvents() {
+    document.getElementById('closeFilterModal')?.addEventListener('click', closeFilterModal);
+    document.getElementById('applyFiltersBtn')?.addEventListener('click', applyFilters);
+    document.getElementById('resetFiltersBtn')?.addEventListener('click', resetFilters);
+    document.getElementById('exportJSONBtn')?.addEventListener('click', exportToJSON);
+    document.getElementById('exportCSVBtn')?.addEventListener('click', exportToCSV);
+    document.getElementById('exportPDFBtn')?.addEventListener('click', exportToPDF);
+    document.getElementById('exportSHPBtn')?.addEventListener('click', exportToSHP);
+    
+    // Cascading: when suburb changes, update other dropdowns
+    document.getElementById('suburbSelect')?.addEventListener('change', (e) => {
+        updateCascadingOptions(e.target.value);
     });
 }
 
@@ -593,11 +553,25 @@ function attachButtonEvents(selector, attribute, filterType) {
 // INITIALIZATION
 // ============================================
 
-function initFilters() {
-    console.log('Initializing enhanced filters...');
-    attachEvents();
+async function initFilters() {
+    console.log('Initializing cascading filters...');
+    
+    await loadFilterData();
+    
+    // Create modal if not exists
+    if (!document.getElementById('filterModal')) {
+        document.body.insertAdjacentHTML('beforeend', renderModal());
+        attachModalEvents();
+    }
+    
+    // Update filter button
+    const filterBtn = document.getElementById('mainFilterBtn');
+    if (filterBtn) {
+        filterBtn.addEventListener('click', openFilterModal);
+    }
+    
     updateFilterButtonText();
-    console.log('Filters initialized');
+    console.log('Filters ready!');
 }
 
 // ============================================
@@ -605,11 +579,12 @@ function initFilters() {
 // ============================================
 
 export default {
-    render: render,
     init: initFilters,
-    getFilteredManholes: getFilteredManholes,
-    getFilteredPipelines: getFilteredPipelines,
-    getAllManholes: getAllManholes,
-    getAllPipelines: getAllPipelines,
-    getCurrent: getCurrentFilters
+    getFilteredManholes,
+    getFilteredPipelines,
+    getCurrentFilters: () => currentFilters,
+    exportToJSON,
+    exportToCSV,
+    exportToPDF,
+    exportToSHP
 };

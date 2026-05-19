@@ -1,4 +1,5 @@
 // main.js - Main orchestrator for Mutare Sewer Dashboard
+// Connects to Python Flask backend on port 5000
 
 import Header from './components/header.js';
 import Filters from './components/filters.js';
@@ -8,14 +9,12 @@ import Statistics from './components/statistics.js';
 import Hotspots from './components/hotspots.js';
 import Reports from './components/reports.js';
 import ReportProcessor from './components/reportprocessor.js';
-import DBConfig from './components/dbconfig.js';
+import Identification from './components/identification.js';  // ADDED: Identification component
 
 // ============================================
-// API CONFIGURATION (adjust to your backend URL)
+// API CONFIGURATION – PYTHON BACKEND
 // ============================================
-const API_BASE_URL = window.location.hostname === 'localhost'
-  ? 'http://localhost:5000/api'
-  : 'https://mutare-backend.onrender.com/api';   // change to your deployed backend
+const API_BASE_URL = 'http://localhost:5000/api';
 
 console.log('Imports loaded:', {
     Header: !!Header,
@@ -25,40 +24,37 @@ console.log('Imports loaded:', {
     Statistics: !!Statistics,
     Hotspots: !!Hotspots,
     Reports: !!Reports,
-    ReportProcessor: !!ReportProcessor
+    ReportProcessor: !!ReportProcessor,
+    Identification: !!Identification
 });
 
 // ============================================
-// RENDER ALL COMPONENTS (unchanged)
+// RENDER ALL COMPONENTS
 // ============================================
 
 function renderComponents() {
     console.log('Rendering components...');
     
-    // LEFT PANEL - Header
     const headerContainer = document.getElementById('header-container');
     if (headerContainer && Header && Header.render) {
         headerContainer.innerHTML = Header.render();
         console.log('Header rendered');
     }
     
-    // LEFT PANEL - Layer Manager
     const layermanagerContainer = document.getElementById('layermanager-container');
     if (layermanagerContainer && LayerManager && LayerManager.render) {
         layermanagerContainer.innerHTML = LayerManager.render();
         console.log('LayerManager rendered');
     }
     
-    // LEFT PANEL - Filters (FILTER button and modal)
     const filtersContainer = document.getElementById('filters-container');
     if (filtersContainer && Filters && Filters.render) {
         filtersContainer.innerHTML = Filters.render();
-        console.log('Filters HTML rendered - Filter button should appear');
+        console.log('Filters HTML rendered');
     } else {
         console.error('Filters container or render method not found!');
     }
     
-    // LEFT PANEL - Report Processor (BELOW FILTERS)
     const reportProcessorContainer = document.getElementById('reportprocessor-container');
     if (reportProcessorContainer && ReportProcessor && ReportProcessor.render) {
         reportProcessorContainer.innerHTML = ReportProcessor.render();
@@ -67,41 +63,45 @@ function renderComponents() {
         console.error('ReportProcessor container or render method not found!');
     }
     
-    // TOOLBAR (DBConfig is rendered inside)
+    // ADDED: Identification container
+    const identificationContainer = document.getElementById('identification-container');
+    if (identificationContainer && Identification && Identification.render) {
+        identificationContainer.innerHTML = Identification.render();
+        console.log('Identification rendered');
+    } else {
+        console.warn('Identification container or render method not found!');
+    }
+    
     const toolbarContainer = document.getElementById('toolbar-container');
     if (toolbarContainer) {
         toolbarContainer.innerHTML = `
             <div class="toolbar">
                 <div id="menu-container" class="toolbar-menu-container"></div>
-                ${DBConfig.render()}
-                <button id="fitBoundsBtn">🎯 FIT ALL</button>
-                <button id="heatmapBtn">🔥 SHOW HEATMAP</button>
-                <button id="clearHeatmapBtn">❌ CLEAR HEATMAP</button>
-                <button id="exportGeoJSONBtn">📎 EXPORT GEOJSON</button>
-                <button id="printMapBtn">🖨️ PRINT MAP</button>
+                <button id="fitBoundsBtn" title="Fit map to all assets">🎯 FIT ALL</button>
+                <button id="heatmapBtn" title="Show heatmap of blockages">🔥 SHOW HEATMAP</button>
+                <button id="clearHeatmapBtn" title="Clear heatmap">❌ CLEAR HEATMAP</button>
+                <button id="identifyBtn" title="Identify feature at mouse click">🔍 IDENTIFY</button>
+                <button id="exportGeoJSONBtn" title="Export current view as GeoJSON">📎 EXPORT GEOJSON</button>
+                <button id="printMapBtn" title="Print map">🖨️ PRINT MAP</button>
             </div>
         `;
     }
     
-    // Add Menu Icon to the toolbar container
     const menuContainer = document.getElementById('menu-container');
     if (menuContainer && LayerManager && LayerManager.renderMenuIcon) {
         menuContainer.innerHTML = LayerManager.renderMenuIcon();
     }
     
-    // MAP CONTAINER
     const mapContainer = document.getElementById('map-container');
     if (mapContainer && !document.getElementById('map')) {
         mapContainer.innerHTML = '<div id="map" style="height: 100%; width: 100%;"></div>';
     }
     
-    // STATUS BAR
     const statusContainer = document.getElementById('status-container');
     if (statusContainer) {
-        statusContainer.innerHTML = '<div class="status-bar"><span id="coordStatus">📍 Ready | Map loaded</span></div>';
+        statusContainer.innerHTML = '<div class="status-bar"><span id="coordStatus">📍 Ready | Map loading...</span><span id="identifyStatus" style="margin-left: 20px;"></span></div>';
     }
     
-    // RIGHT PANEL
     const statisticsContainer = document.getElementById('statistics-container');
     if (statisticsContainer && Statistics && Statistics.render) {
         statisticsContainer.innerHTML = Statistics.render();
@@ -121,34 +121,92 @@ function renderComponents() {
 }
 
 // ============================================
-// DATA FETCHING HELPERS
+// DATA FETCHING (for components that need full datasets)
 // ============================================
 
-async function fetchAllAssets() {
-    const response = await fetch(`${API_BASE_URL}/assets`);
-    if (!response.ok) throw new Error('Failed to fetch assets');
-    return await response.json();
+async function fetchAllManholes() {
+    try {
+        const res = await fetch(`${API_BASE_URL}/manholes_all`);
+        if (!res.ok) throw new Error('Failed to fetch manholes');
+        const geojson = await res.json();
+        return geojson.features.map(f => ({
+            ...f.properties,
+            lat: f.geometry.coordinates[1],
+            lng: f.geometry.coordinates[0],
+            id: f.properties.manhole_id || f.properties.id,
+            type: 'manhole'
+        }));
+    } catch (err) {
+        console.error('fetchAllManholes error:', err);
+        return [];
+    }
+}
+
+async function fetchAllPipelines() {
+    try {
+        const res = await fetch(`${API_BASE_URL}/pipelines_all`);
+        if (!res.ok) throw new Error('Failed to fetch pipelines');
+        const geojson = await res.json();
+        return geojson.features.map(f => ({
+            ...f.properties,
+            geometry: f.geometry,
+            type: 'pipeline',
+            lat: f.geometry.coordinates[0]?.[1] || f.geometry.coordinates[1], // approximate
+            lng: f.geometry.coordinates[0]?.[0] || f.geometry.coordinates[0]
+        }));
+    } catch (err) {
+        console.error('fetchAllPipelines error:', err);
+        return [];
+    }
+}
+
+async function fetchAllSuburbs() {
+    try {
+        const res = await fetch(`${API_BASE_URL}/suburbs_all`);
+        if (!res.ok) throw new Error('Failed to fetch suburbs');
+        const geojson = await res.json();
+        return geojson.features.map(f => ({
+            ...f.properties,
+            geometry: f.geometry,
+            type: 'suburb'
+        }));
+    } catch (err) {
+        console.error('fetchAllSuburbs error:', err);
+        return [];
+    }
 }
 
 async function fetchAllJobs() {
-    const response = await fetch(`${API_BASE_URL}/jobs`);
-    if (!response.ok) throw new Error('Failed to fetch jobs');
-    return await response.json();
+    try {
+        const res = await fetch(`${API_BASE_URL}/jobs_all`);
+        if (!res.ok) return [];
+        const geojson = await res.json();
+        return geojson.features.map(f => ({
+            ...f.properties,
+            lat: f.geometry.coordinates[1],
+            lng: f.geometry.coordinates[0],
+            type: 'job'
+        }));
+    } catch (err) {
+        console.warn('Job logs not available:', err);
+        return [];
+    }
 }
 
-async function loadInitialMapData() {
+async function fetchAllComplaints() {
     try {
-        const assets = await fetchAllAssets();
-        const manholes = assets.filter(a => a.asset_type === 'manhole');
-        const pipelines = assets.filter(a => a.asset_type === 'pipeline');
-        
-        if (MapView && MapView.loadManholes) MapView.loadManholes(manholes);
-        if (MapView && MapView.loadPipelines) MapView.loadPipelines(pipelines);
-        
-        return { manholes, pipelines };
+        const res = await fetch(`${API_BASE_URL}/complaints_all`);
+        if (!res.ok) return [];
+        const geojson = await res.json();
+        return geojson.features.map(f => ({
+            ...f.properties,
+            lat: f.geometry.coordinates[1],
+            lng: f.geometry.coordinates[0],
+            type: 'complaint'
+        }));
     } catch (err) {
-        console.error('Failed to load initial map data:', err);
-        return { manholes: [], pipelines: [] };
+        console.warn('Complaints not available:', err);
+        return [];
     }
 }
 
@@ -159,15 +217,12 @@ async function loadInitialMapData() {
 async function initComponents() {
     console.log('Initializing components...');
     
-    // Initialize Map (MUST BE FIRST)
+    // 1. Map – will automatically fetch bbox-filtered data
     if (MapView && typeof MapView.init === 'function') {
         console.log('Initializing map...');
         const map = MapView.init(-18.9735, 32.6705, 13);
         if (map) {
-            console.log('Map initialized successfully');
-            const { manholes, pipelines } = await loadInitialMapData();
-            // If data is already loaded by loadInitialMapData, we can still call updateLayers
-            if (MapView.updateLayers) MapView.updateLayers(manholes, pipelines);
+            console.log('Map initialized, data will load automatically');
         } else {
             console.error('Map initialization failed');
         }
@@ -175,7 +230,7 @@ async function initComponents() {
         console.error('MapView.init is not a function!', MapView);
     }
     
-    // Initialize Filters
+    // 2. Filters (requires data from backend for dropdowns)
     if (Filters && typeof Filters.init === 'function') {
         console.log('Initializing filters...');
         Filters.init();
@@ -183,7 +238,7 @@ async function initComponents() {
         console.error('Filters.init is not a function!', Filters);
     }
     
-    // Initialize Report Processor
+    // 3. Report Processor
     if (ReportProcessor && typeof ReportProcessor.init === 'function') {
         console.log('Initializing report processor...');
         ReportProcessor.init();
@@ -191,12 +246,7 @@ async function initComponents() {
         console.error('ReportProcessor.init is not a function!', ReportProcessor);
     }
     
-    // Initialize DBConfig
-    if (DBConfig && typeof DBConfig.init === 'function') {
-        DBConfig.init();
-    }
-    
-    // Initialize Layer Manager
+    // 4. Layer Manager
     if (LayerManager && typeof LayerManager.init === 'function') {
         console.log('Initializing layer manager...');
         LayerManager.init();
@@ -204,42 +254,63 @@ async function initComponents() {
         console.error('LayerManager.init is not a function!', LayerManager);
     }
     
-    // Initialize Statistics
+    // 5. Statistics
     if (Statistics && typeof Statistics.init === 'function') {
         console.log('Initializing statistics...');
-        Statistics.init();
-        // Initial statistics will be populated after first filter change or data load
-        const jobs = await fetchAllJobs().catch(() => []);
-        const assets = await fetchAllAssets().catch(() => []);
-        const manholes = assets.filter(a => a.asset_type === 'manhole');
-        const pipelines = assets.filter(a => a.asset_type === 'pipeline');
-        if (Statistics.update) Statistics.update(manholes, pipelines, jobs);
+        await Statistics.init();
     }
     
-    // Initialize Hotspots
+    // 6. Hotspots
     if (Hotspots && typeof Hotspots.init === 'function') {
         console.log('Initializing hotspots...');
         Hotspots.init();
-        const assets = await fetchAllAssets().catch(() => []);
-        const manholes = assets.filter(a => a.asset_type === 'manhole');
+        const manholes = await fetchAllManholes();
         if (Hotspots.update) Hotspots.update(manholes);
     }
     
-    // Initialize Reports
+    // 7. Reports
     if (Reports && typeof Reports.init === 'function') {
         console.log('Initializing reports...');
-        Reports.init();
+        await Reports.init();
+    }
+    
+    // 8. Identification - NEW: Initialize with all data
+    if (Identification && typeof Identification.init === 'function') {
+        console.log('Initializing identification component...');
+        
+        // Fetch all datasets for identification
+        const [manholes, pipelines, suburbs, jobs, complaints] = await Promise.all([
+            fetchAllManholes(),
+            fetchAllPipelines(),
+            fetchAllSuburbs(),
+            fetchAllJobs(),
+            fetchAllComplaints()
+        ]);
+        
+        // Set data for identification
+        if (Identification.setData) {
+            Identification.setData(manholes, pipelines, suburbs, jobs, complaints);
+        }
+        
+        // Initialize with map reference
+        const map = MapView.getMap();
+        if (map && Identification.init) {
+            Identification.init(map);
+        }
+        
+        console.log(`Identification data loaded: ${manholes.length} manholes, ${pipelines.length} pipelines, ${suburbs.length} suburbs, ${jobs.length} jobs, ${complaints.length} complaints`);
+    } else {
+        console.error('Identification component not available!');
     }
     
     console.log('All components initialized');
 }
 
 // ============================================
-// SETUP EVENT LISTENERS
+// TOOLBAR EVENT LISTENERS
 // ============================================
 
 function setupEventListeners() {
-    // Toolbar buttons
     const fitBoundsBtn = document.getElementById('fitBoundsBtn');
     if (fitBoundsBtn) {
         fitBoundsBtn.addEventListener('click', () => {
@@ -250,18 +321,7 @@ function setupEventListeners() {
     const heatmapBtn = document.getElementById('heatmapBtn');
     if (heatmapBtn) {
         heatmapBtn.addEventListener('click', async () => {
-            let manholes = [];
-            try {
-                // Get currently filtered manholes (or all if no filter active)
-                if (Filters && Filters.getFilteredManholes) {
-                    manholes = await Filters.getFilteredManholes();
-                } else {
-                    const assets = await fetchAllAssets();
-                    manholes = assets.filter(a => a.asset_type === 'manhole');
-                }
-            } catch (err) {
-                console.error('Error fetching manholes for heatmap:', err);
-            }
+            const manholes = await fetchAllManholes();
             if (MapView && MapView.showHeatmapFromManholes) {
                 MapView.showHeatmapFromManholes(manholes);
             }
@@ -275,72 +335,132 @@ function setupEventListeners() {
         });
     }
     
+    // NEW: Identify button toggles identification mode
+    const identifyBtn = document.getElementById('identifyBtn');
+    let identifyMode = false;
+    if (identifyBtn && Identification && Identification.enableIdentifyMode) {
+        identifyBtn.addEventListener('click', () => {
+            identifyMode = !identifyMode;
+            if (identifyMode) {
+                Identification.enableIdentifyMode(true);
+                identifyBtn.style.background = '#28a745';
+                identifyBtn.style.color = 'white';
+                identifyBtn.title = 'Click on map to identify features (Active)';
+                const identifyStatus = document.getElementById('identifyStatus');
+                if (identifyStatus) identifyStatus.innerHTML = '🔍 Identify mode ON - click on any feature';
+            } else {
+                Identification.enableIdentifyMode(false);
+                identifyBtn.style.background = '';
+                identifyBtn.style.color = '';
+                identifyBtn.title = 'Click to identify features on map';
+                const identifyStatus = document.getElementById('identifyStatus');
+                if (identifyStatus) identifyStatus.innerHTML = '';
+            }
+        });
+    }
+    
     const printMapBtn = document.getElementById('printMapBtn');
     if (printMapBtn) {
         printMapBtn.addEventListener('click', () => window.print());
     }
     
     const exportGeoJSONBtn = document.getElementById('exportGeoJSONBtn');
-    if (exportGeoJSONBtn) {
+    if (exportGeoJSONBtn && Identification && Identification.exportToGeoJSON) {
         exportGeoJSONBtn.addEventListener('click', () => {
-            alert('Export GeoJSON - Will export current map data');
+            Identification.exportToGeoJSON();
+        });
+    } else if (exportGeoJSONBtn) {
+        exportGeoJSONBtn.addEventListener('click', () => {
+            alert('GeoJSON export: will export current view data');
         });
     }
     
-    // Base map switcher
+    // Base map selector
     document.addEventListener('change', function(e) {
         if (e.target && e.target.id === 'baseMapSelect') {
             if (MapView && MapView.switchBaseMap) MapView.switchBaseMap(e.target.value);
         }
     });
     
-    // Listen for filter changes (from Filters component)
+    // Listen for filter changes
     document.addEventListener('filtersChanged', async (event) => {
         console.log('Filters changed:', event.detail);
-        let { manholes, pipelines } = event.detail;
-        // The event already contains the filtered data from the Filters component (which now uses API)
-        if (!manholes || manholes.length === 0) {
-            // Fallback: fetch all manholes
-            const assets = await fetchAllAssets().catch(() => []);
-            manholes = assets.filter(a => a.asset_type === 'manhole');
-        }
-        if (!pipelines || pipelines.length === 0) {
-            const assets = await fetchAllAssets().catch(() => []);
-            pipelines = assets.filter(a => a.asset_type === 'pipeline');
-        }
+        const manholes = await fetchAllManholes();
+        const pipelines = await fetchAllPipelines();
         
-        if (MapView && MapView.updateLayers) MapView.updateLayers(manholes, pipelines);
-        
-        // Update statistics and hotspots with filtered data
-        const jobs = await fetchAllJobs().catch(() => []);
-        if (Statistics && Statistics.update) Statistics.update(manholes, pipelines, jobs);
         if (Hotspots && Hotspots.update) Hotspots.update(manholes);
+        if (Statistics && Statistics.update) Statistics.update();
+        
+        // Update identification data with filtered results
+        if (Identification && Identification.setData) {
+            const suburbs = await fetchAllSuburbs();
+            const jobs = await fetchAllJobs();
+            const complaints = await fetchAllComplaints();
+            Identification.setData(manholes, pipelines, suburbs, jobs, complaints);
+        }
     });
     
-    // Zoom to location event
+    // Zoom to location (from hotspots, identification)
     document.addEventListener('zoomToLocation', (event) => {
         const { lat, lng, zoom } = event.detail;
         if (MapView && MapView.getMap) {
             const map = MapView.getMap();
-            if (map && typeof map.setView === 'function') map.setView([lat, lng], zoom || 18);
+            if (map && map.setView) map.setView([lat, lng], zoom || 18);
         }
     });
     
-    // Listen for layer toggles
+    // Layer toggled event
     document.addEventListener('layerToggled', async (event) => {
-        const { layerId, visible } = event.detail;
-        console.log(`Layer ${layerId} toggled: ${visible}`);
-        // Re-fetch current filtered data (could be expensive; you may want to cache)
-        if (Filters && Filters.getFilteredManholes) {
-            const manholes = await Filters.getFilteredManholes().catch(() => []);
-            const pipelines = await Filters.getFilteredPipelines().catch(() => []);
-            if (MapView && MapView.updateLayers) MapView.updateLayers(manholes, pipelines);
+        console.log(`Layer ${event.detail.layerId} toggled: ${event.detail.visible}`);
+    });
+    
+    // Data refreshed event
+    document.addEventListener('dataRefreshed', async () => {
+        console.log('Data refreshed, updating identification...');
+        const [manholes, pipelines, suburbs, jobs, complaints] = await Promise.all([
+            fetchAllManholes(),
+            fetchAllPipelines(),
+            fetchAllSuburbs(),
+            fetchAllJobs(),
+            fetchAllComplaints()
+        ]);
+        if (Identification && Identification.setData) {
+            Identification.setData(manholes, pipelines, suburbs, jobs, complaints);
+        }
+    });
+    
+    // Map data refreshed event
+    document.addEventListener('mapDataRefreshed', (event) => {
+        console.log('Map data refreshed:', event.detail);
+    });
+    
+    // Map ready event
+    document.addEventListener('mapReady', () => {
+        console.log('Map ready event received');
+        const identifyStatus = document.getElementById('identifyStatus');
+        if (identifyStatus) identifyStatus.innerHTML = '✅ Map ready - Click 🔍 to identify features';
+        setTimeout(() => {
+            if (identifyStatus && identifyStatus.innerHTML === '✅ Map ready - Click 🔍 to identify features') {
+                identifyStatus.innerHTML = '';
+            }
+        }, 3000);
+    });
+    
+    // ============================================
+    // ADDED: Show Complaint Buffers Event Listener
+    // ============================================
+    document.addEventListener('showComplaintBuffers', (event) => {
+        console.log('Received showComplaintBuffers event:', event.detail);
+        if (MapView && MapView.showComplaintsWithBuffers) {
+            MapView.showComplaintsWithBuffers(event.detail.complaints, event.detail.reportDate);
+        } else {
+            console.warn('MapView.showComplaintsWithBuffers not available');
         }
     });
 }
 
 // ============================================
-// INITIALIZATION
+// MAIN INIT
 // ============================================
 
 async function init() {
@@ -348,20 +468,18 @@ async function init() {
     
     if (typeof L === 'undefined') {
         console.error('Leaflet (L) is not loaded!');
-        alert('Leaflet library not loaded. Please refresh the page.');
+        alert('Leaflet library not found. Please check network.');
         return;
     }
     
     renderComponents();
-    await initComponents();   // now async
+    await initComponents();
     setupEventListeners();
     
-    console.log('Dashboard ready!');
-    console.log('Click the "🔍 FILTER" button in the left panel to open the filter modal');
-    console.log('Click the "🔍 PROCESS REPORT" button to process daily reports');
+    console.log('Dashboard ready! Backend API:', API_BASE_URL);
 }
 
-// Start the application
+// Start the app
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
 } else {
