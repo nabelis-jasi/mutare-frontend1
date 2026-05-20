@@ -26,6 +26,8 @@ let currentData = {
     pipelinesGood: 0
 };
 
+let currentView = 'menu';
+
 const API_BASE_URL = 'http://localhost:5000/api';
 
 // ============================================
@@ -106,7 +108,6 @@ async function fetchComplaintsStatus() {
 // ============================================
 
 function initCharts() {
-    // Blockages by Suburb Chart (Bar Chart)
     const suburbCtx = document.getElementById('suburbChart')?.getContext('2d');
     if (suburbCtx) {
         suburbChart = new Chart(suburbCtx, {
@@ -146,7 +147,6 @@ function initCharts() {
         });
     }
 
-    // Jobs by Type Chart (Pie Chart)
     const jobsCtx = document.getElementById('jobsChart')?.getContext('2d');
     if (jobsCtx) {
         jobsChart = new Chart(jobsCtx, {
@@ -171,7 +171,6 @@ function initCharts() {
         });
     }
     
-    // Complaints Status Chart (Doughnut Chart)
     const statusCtx = document.getElementById('statusChart')?.getContext('2d');
     if (statusCtx) {
         statusChart = new Chart(statusCtx, {
@@ -196,7 +195,6 @@ function initCharts() {
         });
     }
     
-    // Asset Status Chart (Stacked Bar)
     const assetCtx = document.getElementById('assetStatusChart')?.getContext('2d');
     if (assetCtx) {
         assetStatusChart = new Chart(assetCtx, {
@@ -257,7 +255,6 @@ function initCharts() {
 // ============================================
 
 async function updateFromAPI() {
-    // 1. Fetch general stats
     const stats = await fetchStats();
     if (stats) {
         currentData.manholesCount = stats.manholes || 0;
@@ -271,7 +268,6 @@ async function updateFromAPI() {
         updateQuickSummaryDOM();
     }
 
-    // 2. Fetch asset status
     const assetStatus = await fetchAssetStatus();
     if (assetStatus) {
         currentData.manholesCritical = assetStatus.manholes?.critical || 0;
@@ -289,7 +285,6 @@ async function updateFromAPI() {
         updateRiskBar();
     }
 
-    // 3. Fetch blockages by suburb
     const blockagesData = await fetchBlockagesBySuburb();
     if (blockagesData && suburbChart) {
         suburbChart.data.labels = blockagesData.suburbs;
@@ -297,7 +292,6 @@ async function updateFromAPI() {
         suburbChart.update();
     }
 
-    // 4. Fetch jobs summary
     const jobsData = await fetchJobsSummary();
     if (jobsData && jobsChart) {
         jobsChart.data.labels = jobsData.labels;
@@ -305,7 +299,6 @@ async function updateFromAPI() {
         jobsChart.update();
     }
     
-    // 5. Fetch complaints status
     const complaintsStatus = await fetchComplaintsStatus();
     if (complaintsStatus && statusChart) {
         currentData.resolvedComplaints = complaintsStatus.resolved || 0;
@@ -351,23 +344,21 @@ function updateAssetStatusChart() {
 }
 
 function updateQuickSummaryDOM() {
-    const totalManholesEl = document.getElementById('totalManholes');
-    const totalPipelinesEl = document.getElementById('totalPipelines');
-    const totalComplaintsEl = document.getElementById('totalComplaints');
-    const totalBlockagesEl = document.getElementById('totalBlockages');
-    const avgBlockagesEl = document.getElementById('avgBlockages');
-    const completedJobsEl = document.getElementById('completedJobs');
-    const inProgressJobsEl = document.getElementById('inProgressJobs');
-    const criticalAssetsEl = document.getElementById('criticalAssets');
-
-    if (totalManholesEl) totalManholesEl.innerText = currentData.manholesCount;
-    if (totalPipelinesEl) totalPipelinesEl.innerText = currentData.pipelinesCount;
-    if (totalComplaintsEl) totalComplaintsEl.innerText = currentData.complaintsCount;
-    if (totalBlockagesEl) totalBlockagesEl.innerText = currentData.totalBlockages;
-    if (avgBlockagesEl) avgBlockagesEl.innerText = currentData.avgBlockages.toFixed(1);
-    if (completedJobsEl) completedJobsEl.innerText = currentData.completedJobs;
-    if (inProgressJobsEl) inProgressJobsEl.innerText = currentData.inProgressJobs;
-    if (criticalAssetsEl) criticalAssetsEl.innerText = currentData.criticalCount;
+    const elements = {
+        totalManholes: currentData.manholesCount,
+        totalPipelines: currentData.pipelinesCount,
+        totalComplaints: currentData.complaintsCount,
+        totalBlockages: currentData.totalBlockages,
+        avgBlockages: currentData.avgBlockages.toFixed(1),
+        completedJobs: currentData.completedJobs,
+        inProgressJobs: currentData.inProgressJobs,
+        criticalAssets: currentData.criticalCount
+    };
+    
+    for (const [id, value] of Object.entries(elements)) {
+        const el = document.getElementById(id);
+        if (el) el.innerText = value;
+    }
 }
 
 function updateRiskBar() {
@@ -394,6 +385,21 @@ function updateRiskBar() {
 }
 
 // ============================================
+// NAVIGATION FUNCTIONS
+// ============================================
+
+function showMenu() {
+    currentView = 'menu';
+    const menuDiv = document.getElementById('menuView');
+    const contentDiv = document.getElementById('contentView');
+    const backButton = document.getElementById('backButton');
+    
+    if (menuDiv) menuDiv.style.display = 'block';
+    if (contentDiv) contentDiv.style.display = 'none';
+    if (backButton) backButton.style.display = 'none';
+}
+
+// ============================================
 // MAIN UPDATE FUNCTION
 // ============================================
 
@@ -407,101 +413,222 @@ function getCurrentStatistics() {
 }
 
 // ============================================
-// RENDER HTML
+// RENDER HTML - COMPACT TABS
 // ============================================
 
 function render() {
     return `
         <div class="statistics-container">
-            <!-- Row 1: Three Charts -->
-            <div class="charts-row">
-                <div class="chart-container">
-                    <h4>📊 BLOCKAGES BY SUBURB</h4>
-                    <canvas id="suburbChart"></canvas>
+            <!-- Back Button -->
+            <div id="backButton" style="display: none; margin-bottom: 16px;">
+                <button onclick="window.showMenu && window.showMenu()" style="
+                    background: #1a472a;
+                    color: #69f0ae;
+                    border: 1px solid #2e7d32;
+                    border-radius: 6px;
+                    padding: 6px 12px;
+                    cursor: pointer;
+                    font-size: 12px;
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                ">
+                    ← BACK TO MENU
+                </button>
+            </div>
+            
+            <!-- Current View Title -->
+            <div id="currentViewTitle" style="
+                text-align: center;
+                color: #69f0ae;
+                font-size: 1.2rem;
+                font-weight: bold;
+                margin-bottom: 20px;
+            "></div>
+            
+            <!-- MENU VIEW -->
+            <div id="menuView">
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <h2 style="color: #69f0ae; margin-bottom: 5px; font-size: 1.4rem;">📊 NETWORK INSIGHTS</h2>
+                    <p style="color: #7cb342; font-size: 11px;">Select a category to view insights</p>
                 </div>
-                <div class="chart-container">
-                    <h4>📋 JOBS BY TYPE</h4>
-                    <canvas id="jobsChart"></canvas>
-                </div>
-                <div class="chart-container">
-                    <h4>✅ COMPLAINTS STATUS</h4>
-                    <canvas id="statusChart"></canvas>
-                    <div style="text-align: center; margin-top: 8px;">
-                        <span style="color: #28a745;">✓ Resolved: <span id="resolvedComplaints">0</span></span> | 
-                        <span style="color: #ffc107;">⏳ Pending: <span id="pendingComplaints">0</span></span>
+                
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px;">
+                    <!-- Blockage Insights -->
+                    <div onclick="window.showView && window.showView('blockages', '🚫 BLOCKAGE INSIGHTS BY SUBURB')" style="
+                        background: linear-gradient(135deg, #1a472a, #0d2818);
+                        border: 1px solid #2e7d32;
+                        border-radius: 8px;
+                        padding: 12px;
+                        cursor: pointer;
+                        text-align: center;
+                        transition: transform 0.2s;
+                    " onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform='translateY(0)'">
+                        <div style="font-size: 28px; margin-bottom: 5px;">🚫</div>
+                        <h3 style="color: #69f0ae; margin-bottom: 3px; font-size: 13px;">Blockage</h3>
+                        <p style="color: #a5d6a7; font-size: 10px;">By suburb</p>
+                    </div>
+                    
+                    <!-- Jobs Insights -->
+                    <div onclick="window.showView && window.showView('jobs', '📋 JOBS INSIGHTS BY TYPE')" style="
+                        background: linear-gradient(135deg, #1a472a, #0d2818);
+                        border: 1px solid #2e7d32;
+                        border-radius: 8px;
+                        padding: 12px;
+                        cursor: pointer;
+                        text-align: center;
+                        transition: transform 0.2s;
+                    " onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform='translateY(0)'">
+                        <div style="font-size: 28px; margin-bottom: 5px;">📋</div>
+                        <h3 style="color: #69f0ae; margin-bottom: 3px; font-size: 13px;">Jobs</h3>
+                        <p style="color: #a5d6a7; font-size: 10px;">By type</p>
+                    </div>
+                    
+                    <!-- Complaints Insights -->
+                    <div onclick="window.showView && window.showView('complaints', '✅ COMPLAINTS STATUS INSIGHTS')" style="
+                        background: linear-gradient(135deg, #1a472a, #0d2818);
+                        border: 1px solid #2e7d32;
+                        border-radius: 8px;
+                        padding: 12px;
+                        cursor: pointer;
+                        text-align: center;
+                        transition: transform 0.2s;
+                    " onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform='translateY(0)'">
+                        <div style="font-size: 28px; margin-bottom: 5px;">✅</div>
+                        <h3 style="color: #69f0ae; margin-bottom: 3px; font-size: 13px;">Complaints</h3>
+                        <p style="color: #a5d6a7; font-size: 10px;">Status</p>
+                    </div>
+                    
+                    <!-- Asset Health Insights -->
+                    <div onclick="window.showView && window.showView('asset', '🏭 ASSET HEALTH INSIGHTS')" style="
+                        background: linear-gradient(135deg, #1a472a, #0d2818);
+                        border: 1px solid #2e7d32;
+                        border-radius: 8px;
+                        padding: 12px;
+                        cursor: pointer;
+                        text-align: center;
+                        transition: transform 0.2s;
+                    " onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform='translateY(0)'">
+                        <div style="font-size: 28px; margin-bottom: 5px;">🏭</div>
+                        <h3 style="color: #69f0ae; margin-bottom: 3px; font-size: 13px;">Asset Health</h3>
+                        <p style="color: #a5d6a7; font-size: 10px;">Manholes & Pipelines</p>
+                    </div>
+                    
+                    <!-- Quick Insights -->
+                    <div onclick="window.showView && window.showView('summary', '📈 QUICK INSIGHTS')" style="
+                        background: linear-gradient(135deg, #1a472a, #0d2818);
+                        border: 1px solid #2e7d32;
+                        border-radius: 8px;
+                        padding: 12px;
+                        cursor: pointer;
+                        text-align: center;
+                        transition: transform 0.2s;
+                    " onmouseover="this.style.transform='translateY(-3px)'" onmouseout="this.style.transform='translateY(0)'">
+                        <div style="font-size: 28px; margin-bottom: 5px;">📈</div>
+                        <h3 style="color: #69f0ae; margin-bottom: 3px; font-size: 13px;">Quick</h3>
+                        <p style="color: #a5d6a7; font-size: 10px;">Summary stats</p>
                     </div>
                 </div>
             </div>
             
-            <!-- Row 2: Asset Status Chart -->
-            <div class="chart-container">
-                <h4>🏭 ASSET HEALTH STATUS</h4>
-                <p style="font-size: 0.6rem; color: #7cb342; margin-bottom: 8px;">
-                    🟣 Manholes Normal = Purple | 🟢 Pipelines Normal = Lime Green
-                </p>
-                <canvas id="assetStatusChart"></canvas>
-                <div class="asset-status-details">
-                    <div class="asset-detail manhole-detail">
-                        <strong>🟣 MANHOLES</strong>
-                        <span>🔴 Critical: <span id="manholesCritical">0</span></span>
-                        <span>🟡 Warning: <span id="manholesWarning">0</span></span>
-                        <span>🟣 Normal: <span id="manholesGood">0</span></span>
-                    </div>
-                    <div class="asset-detail pipeline-detail">
-                        <strong>🟢 PIPELINES</strong>
-                        <span>🔴 Critical: <span id="pipelinesCritical">0</span></span>
-                        <span>🟡 Warning: <span id="pipelinesWarning">0</span></span>
-                        <span>🟢 Normal: <span id="pipelinesGood">0</span></span>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Row 3: Quick Summary Grid -->
-            <div class="chart-container">
-                <h4>📈 QUICK SUMMARY</h4>
-                <div class="summary-grid">
-                    <div class="summary-card">
-                        <div class="summary-value" id="totalManholes">0</div>
-                        <div class="summary-label">Total Manholes</div>
-                    </div>
-                    <div class="summary-card">
-                        <div class="summary-value" id="totalPipelines">0</div>
-                        <div class="summary-label">Total Pipelines</div>
-                    </div>
-                    <div class="summary-card">
-                        <div class="summary-value" id="totalComplaints">0</div>
-                        <div class="summary-label">Total Complaints</div>
-                    </div>
-                    <div class="summary-card">
-                        <div class="summary-value" id="totalBlockages">0</div>
-                        <div class="summary-label">Total Blockages</div>
-                    </div>
-                    <div class="summary-card">
-                        <div class="summary-value" id="avgBlockages">0</div>
-                        <div class="summary-label">Avg Blockages/Asset</div>
-                    </div>
-                    <div class="summary-card">
-                        <div class="summary-value" id="completedJobs">0</div>
-                        <div class="summary-label">Completed Jobs</div>
-                    </div>
-                    <div class="summary-card">
-                        <div class="summary-value" id="inProgressJobs">0</div>
-                        <div class="summary-label">In Progress Jobs</div>
-                    </div>
-                    <div class="summary-card">
-                        <div class="summary-value" id="criticalAssets">0</div>
-                        <div class="summary-label">Critical Assets</div>
+            <!-- CONTENT VIEW (hidden by default) -->
+            <div id="contentView" style="display: none;">
+                <!-- BLOCKAGE VIEW -->
+                <div id="blockagesView" style="display: none;">
+                    <div class="chart-container">
+                        <canvas id="suburbChart"></canvas>
                     </div>
                 </div>
                 
-                <!-- Risk Distribution Bar -->
-                <div style="margin-top: 16px;">
-                    <div style="font-size: 0.7rem; margin-bottom: 4px; font-weight: bold; color: #7cb342;">⚠️ ASSET RISK DISTRIBUTION</div>
-                    <div id="riskDistributionBar"></div>
-                    <div style="display: flex; justify-content: space-between; margin-top: 6px; font-size: 0.6rem;">
-                        <span>🔴 Critical: <span id="criticalAssetsDetail">0</span></span>
-                        <span>🟡 Warning: <span id="warningAssetsDetail">0</span></span>
-                        <span>🟣🟢 Good: <span id="goodAssetsDetail">0</span></span>
+                <!-- JOBS VIEW -->
+                <div id="jobsView" style="display: none;">
+                    <div class="chart-container">
+                        <canvas id="jobsChart"></canvas>
+                    </div>
+                </div>
+                
+                <!-- COMPLAINTS VIEW -->
+                <div id="complaintsView" style="display: none;">
+                    <div class="chart-container">
+                        <canvas id="statusChart"></canvas>
+                        <div style="text-align: center; margin-top: 12px;">
+                            <span style="color: #28a745;">✓ Resolved: <span id="resolvedComplaints">0</span></span> | 
+                            <span style="color: #ffc107;">⏳ Pending: <span id="pendingComplaints">0</span></span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- ASSET VIEW -->
+                <div id="assetView" style="display: none;">
+                    <div class="chart-container">
+                        <p style="font-size: 0.6rem; color: #7cb342; margin-bottom: 8px;">
+                            🟣 Manholes Normal = Purple | 🟢 Pipelines Normal = Lime Green
+                        </p>
+                        <canvas id="assetStatusChart"></canvas>
+                        <div class="asset-status-details" style="display: flex; gap: 20px; justify-content: center; margin-top: 15px; flex-wrap: wrap;">
+                            <div style="text-align: center;">
+                                <strong style="color: #9b59b6;">🟣 MANHOLES</strong><br>
+                                <span>🔴 Critical: <span id="manholesCritical">0</span></span><br>
+                                <span>🟡 Warning: <span id="manholesWarning">0</span></span><br>
+                                <span>🟣 Normal: <span id="manholesGood">0</span></span>
+                            </div>
+                            <div style="text-align: center;">
+                                <strong style="color: #32cd32;">🟢 PIPELINES</strong><br>
+                                <span>🔴 Critical: <span id="pipelinesCritical">0</span></span><br>
+                                <span>🟡 Warning: <span id="pipelinesWarning">0</span></span><br>
+                                <span>🟢 Normal: <span id="pipelinesGood">0</span></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- SUMMARY VIEW -->
+                <div id="summaryView" style="display: none;">
+                    <div class="chart-container">
+                        <div class="summary-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 10px;">
+                            <div class="summary-card" style="background: #0d2818; padding: 8px; border-radius: 6px; text-align: center;">
+                                <div class="summary-value" id="totalManholes" style="font-size: 1.3rem; font-weight: bold; color: #69f0ae;">0</div>
+                                <div class="summary-label" style="font-size: 10px; color: #a5d6a7;">Manholes</div>
+                            </div>
+                            <div class="summary-card" style="background: #0d2818; padding: 8px; border-radius: 6px; text-align: center;">
+                                <div class="summary-value" id="totalPipelines" style="font-size: 1.3rem; font-weight: bold; color: #69f0ae;">0</div>
+                                <div class="summary-label" style="font-size: 10px; color: #a5d6a7;">Pipelines</div>
+                            </div>
+                            <div class="summary-card" style="background: #0d2818; padding: 8px; border-radius: 6px; text-align: center;">
+                                <div class="summary-value" id="totalComplaints" style="font-size: 1.3rem; font-weight: bold; color: #69f0ae;">0</div>
+                                <div class="summary-label" style="font-size: 10px; color: #a5d6a7;">Complaints</div>
+                            </div>
+                            <div class="summary-card" style="background: #0d2818; padding: 8px; border-radius: 6px; text-align: center;">
+                                <div class="summary-value" id="totalBlockages" style="font-size: 1.3rem; font-weight: bold; color: #69f0ae;">0</div>
+                                <div class="summary-label" style="font-size: 10px; color: #a5d6a7;">Blockages</div>
+                            </div>
+                            <div class="summary-card" style="background: #0d2818; padding: 8px; border-radius: 6px; text-align: center;">
+                                <div class="summary-value" id="avgBlockages" style="font-size: 1.3rem; font-weight: bold; color: #69f0ae;">0</div>
+                                <div class="summary-label" style="font-size: 10px; color: #a5d6a7;">Avg/Asset</div>
+                            </div>
+                            <div class="summary-card" style="background: #0d2818; padding: 8px; border-radius: 6px; text-align: center;">
+                                <div class="summary-value" id="completedJobs" style="font-size: 1.3rem; font-weight: bold; color: #69f0ae;">0</div>
+                                <div class="summary-label" style="font-size: 10px; color: #a5d6a7;">Completed</div>
+                            </div>
+                            <div class="summary-card" style="background: #0d2818; padding: 8px; border-radius: 6px; text-align: center;">
+                                <div class="summary-value" id="inProgressJobs" style="font-size: 1.3rem; font-weight: bold; color: #69f0ae;">0</div>
+                                <div class="summary-label" style="font-size: 10px; color: #a5d6a7;">In Progress</div>
+                            </div>
+                            <div class="summary-card" style="background: #0d2818; padding: 8px; border-radius: 6px; text-align: center;">
+                                <div class="summary-value" id="criticalAssets" style="font-size: 1.3rem; font-weight: bold; color: #69f0ae;">0</div>
+                                <div class="summary-label" style="font-size: 10px; color: #a5d6a7;">Critical</div>
+                            </div>
+                        </div>
+                        
+                        <div style="margin-top: 16px;">
+                            <div style="font-size: 0.7rem; margin-bottom: 4px; font-weight: bold; color: #7cb342;">⚠️ ASSET RISK DISTRIBUTION</div>
+                            <div id="riskDistributionBar"></div>
+                            <div style="display: flex; justify-content: space-between; margin-top: 6px; font-size: 0.6rem;">
+                                <span>🔴 Critical: <span id="criticalAssetsDetail">0</span></span>
+                                <span>🟡 Warning: <span id="warningAssetsDetail">0</span></span>
+                                <span>🟣🟢 Good: <span id="goodAssetsDetail">0</span></span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -517,8 +644,39 @@ async function init() {
     initCharts();
     await updateFromAPI();
     
+    // Expose functions to global scope
+    window.showMenu = showMenu;
+    window.showView = (viewName, viewTitle) => {
+        // Hide all views
+        const views = ['blockagesView', 'jobsView', 'complaintsView', 'assetView', 'summaryView'];
+        views.forEach(view => {
+            const el = document.getElementById(view);
+            if (el) el.style.display = 'none';
+        });
+        
+        // Show selected view
+        const selectedView = document.getElementById(`${viewName}View`);
+        if (selectedView) selectedView.style.display = 'block';
+        
+        // Update UI
+        const menuDiv = document.getElementById('menuView');
+        const contentDiv = document.getElementById('contentView');
+        const backButton = document.getElementById('backButton');
+        const viewTitleEl = document.getElementById('currentViewTitle');
+        
+        if (menuDiv) menuDiv.style.display = 'none';
+        if (contentDiv) contentDiv.style.display = 'block';
+        if (backButton) backButton.style.display = 'flex';
+        if (viewTitleEl) viewTitleEl.innerHTML = viewTitle;
+        
+        // Refresh charts
+        if (suburbChart) suburbChart.update();
+        if (jobsChart) jobsChart.update();
+        if (statusChart) statusChart.update();
+        if (assetStatusChart) assetStatusChart.update();
+    };
+    
     document.addEventListener('reportProcessed', () => {
-        console.log('Report processed, refreshing statistics...');
         updateFromAPI();
     });
     
@@ -531,11 +689,9 @@ async function init() {
     });
     
     document.addEventListener('assetStatusChanged', () => {
-        console.log('Asset status changed, refreshing statistics...');
         updateFromAPI();
     });
     
-    // Refresh every 5 minutes
     setInterval(() => {
         updateFromAPI();
     }, 300000);
