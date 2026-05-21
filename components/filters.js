@@ -41,6 +41,25 @@ let filterData = {
 let tempFilters = { ...currentFilters };
 let currentData = { manholes: [], pipelines: [] };
 
+// DOM Element references (will be set after render)
+let suburbSelect = null;
+let townshipSelect = null;
+let zoneSelect = null;
+let wardSelect = null;
+let opZoneSelect = null;
+let manholeStatusSelect = null;
+let pipeMaterialSelect = null;
+let pipeSizeSelect = null;
+let pipeStatusSelect = null;
+let inspectorSelect = null;
+let depthMinInput = null;
+let depthMaxInput = null;
+let lengthMinInput = null;
+let lengthMaxInput = null;
+let dateFromInput = null;
+let dateToInput = null;
+let searchTextInput = null;
+
 // ============================================
 // LOAD DATA FROM BACKEND
 // ============================================
@@ -59,13 +78,20 @@ async function loadFilterData() {
             filterData.wards = data.wards || [];
             filterData.op_zones = data.op_zones || [];
             console.log('Filter options loaded:', filterData);
+        } else {
+            console.warn('Failed to load filter options:', response.status);
         }
         
         // Load inspectors from manholes
-        const manholesRes = await fetch(`${API_BASE_URL}/manholes/list`);
-        if (manholesRes.ok) {
-            const manholes = await manholesRes.json();
-            filterData.inspectors = [...new Set(manholes.map(m => m.inspector).filter(i => i))];
+        try {
+            const manholesRes = await fetch(`${API_BASE_URL}/manholes/list?limit=5000`);
+            if (manholesRes.ok) {
+                const manholes = await manholesRes.json();
+                filterData.inspectors = [...new Set(manholes.map(m => m.inspector).filter(i => i))];
+                console.log(`Loaded ${filterData.inspectors.length} inspectors`);
+            }
+        } catch (e) {
+            console.warn('Could not load inspectors:', e);
         }
         
     } catch (error) {
@@ -79,14 +105,18 @@ async function loadFilterData() {
 
 async function updateCascadingOptions(suburb) {
     if (!suburb || suburb === 'all') {
-        // Reset to all options
-        const response = await fetch(`${API_BASE_URL}/suburbs/filter-options`);
-        if (response.ok) {
-            const data = await response.json();
-            filterData.townships = data.townships || [];
-            filterData.zones = data.zones || [];
-            filterData.wards = data.wards || [];
-            filterData.op_zones = data.op_zones || [];
+        // Reset to all options - load from main filter options
+        try {
+            const response = await fetch(`${API_BASE_URL}/suburbs/filter-options`);
+            if (response.ok) {
+                const data = await response.json();
+                filterData.townships = data.townships || [];
+                filterData.zones = data.zones || [];
+                filterData.wards = data.wards || [];
+                filterData.op_zones = data.op_zones || [];
+            }
+        } catch (error) {
+            console.error('Error resetting cascading options:', error);
         }
     } else {
         // Get options filtered by suburb
@@ -105,11 +135,23 @@ async function updateCascadingOptions(suburb) {
         }
     }
     
-    // Update dropdown UIs
-    if (townshipSelect) townshipSelect.updateOptions(filterData.townships);
-    if (zoneSelect) zoneSelect.updateOptions(filterData.zones);
-    if (wardSelect) wardSelect.updateOptions(filterData.wards.map(w => `Ward ${w}`));
-    if (opZoneSelect) opZoneSelect.updateOptions(filterData.op_zones.map(oz => `Op Zone ${oz}`));
+    // Update dropdown UIs (check if elements exist)
+    if (townshipSelect) {
+        townshipSelect.innerHTML = '<option value="all">ALL</option>' + 
+            filterData.townships.map(t => `<option value="${t}">${t}</option>`).join('');
+    }
+    if (zoneSelect) {
+        zoneSelect.innerHTML = '<option value="all">ALL</option>' + 
+            filterData.zones.map(z => `<option value="${z}">Zone ${z}</option>`).join('');
+    }
+    if (wardSelect) {
+        wardSelect.innerHTML = '<option value="all">ALL</option>' + 
+            filterData.wards.map(w => `<option value="${w}">Ward ${w}</option>`).join('');
+    }
+    if (opZoneSelect) {
+        opZoneSelect.innerHTML = '<option value="all">ALL</option>' + 
+            filterData.op_zones.map(oz => `<option value="${oz}">Op Zone ${oz}</option>`).join('');
+    }
 }
 
 // ============================================
@@ -171,7 +213,11 @@ async function getFilteredPipelines() {
 // ============================================
 
 function exportToJSON() {
-    const exportData = { filters: currentFilters, data: currentData, exported_at: new Date().toISOString() };
+    const exportData = { 
+        filters: currentFilters, 
+        data: currentData, 
+        exported_at: new Date().toISOString() 
+    };
     const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -185,11 +231,11 @@ function exportToCSV() {
     const rows = [['Type', 'ID', 'Name', 'Suburb', 'Township', 'Status', 'Material', 'Size', 'Depth/Length', 'Inspector', 'Date'].join(',')];
     
     currentData.manholes.forEach(m => {
-        rows.push(['Manhole', m.id || m.manhole_id, m.name, m.suburb, '', m.status, '', '', m.depth, m.inspector, m.inspection_date].join(','));
+        rows.push(['Manhole', m.manhole_id || m.id, m.name || '', m.suburb || '', '', m.status || '', '', '', m.depth || '', m.inspector || '', m.inspection_date || ''].join(','));
     });
     
     currentData.pipelines.forEach(p => {
-        rows.push(['Pipeline', p.id || p.pipe_id, p.name, '', '', p.status, p.material, p.diameter, p.length, '', ''].join(','));
+        rows.push(['Pipeline', p.pipe_id || p.id, p.name || '', '', '', p.status || '', p.material || '', p.diameter || '', p.length || '', '', ''].join(','));
     });
     
     const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
@@ -201,8 +247,13 @@ function exportToCSV() {
     URL.revokeObjectURL(url);
 }
 
-function exportToPDF() { window.print(); }
-function exportToSHP() { alert('Shapefile export - Feature coming soon'); }
+function exportToPDF() { 
+    window.print(); 
+}
+
+function exportToSHP() { 
+    alert('Shapefile export - Feature coming soon'); 
+}
 
 // ============================================
 // RENDER MODAL
@@ -388,11 +439,13 @@ function updateFilterSummary() {
     const summaryDiv = document.getElementById('filterSummary');
     const tagsDiv = document.getElementById('filterTags');
     
-    if (activeFilters.length > 0) {
-        summaryDiv.style.display = 'block';
-        tagsDiv.innerHTML = activeFilters.map(f => `<span class="filter-tag">${f}</span>`).join('');
-    } else {
-        summaryDiv.style.display = 'none';
+    if (summaryDiv && tagsDiv) {
+        if (activeFilters.length > 0) {
+            summaryDiv.style.display = 'block';
+            tagsDiv.innerHTML = activeFilters.map(f => `<span class="filter-tag">${f}</span>`).join('');
+        } else {
+            summaryDiv.style.display = 'none';
+        }
     }
 }
 
@@ -414,10 +467,6 @@ function updateFilterButtonText() {
     } else {
         filterBtn.innerHTML = `🔍 FILTERS (${activeCount})`;
         filterBtn.classList.add('active-filter');
-        
-        // Update summary text
-        const summaryDiv = document.getElementById('activeFiltersSummary');
-        if (summaryDiv) summaryDiv.innerHTML = `${activeCount} active filter(s)`;
     }
 }
 
@@ -429,23 +478,23 @@ function openFilterModal() {
     tempFilters = JSON.parse(JSON.stringify(currentFilters));
     
     // Set dropdown values
-    document.getElementById('suburbSelect').value = tempFilters.suburb_nam;
-    document.getElementById('townshipSelect').value = tempFilters.township;
-    document.getElementById('zoneSelect').value = tempFilters.zone;
-    document.getElementById('wardSelect').value = tempFilters.ward;
-    document.getElementById('opZoneSelect').value = tempFilters.op_zone;
-    document.getElementById('manholeStatusSelect').value = tempFilters.manhole_status;
-    document.getElementById('pipeMaterialSelect').value = tempFilters.pipe_material;
-    document.getElementById('pipeSizeSelect').value = tempFilters.pipe_size;
-    document.getElementById('pipeStatusSelect').value = tempFilters.pipe_status;
-    document.getElementById('inspectorSelect').value = tempFilters.inspector;
-    document.getElementById('depthMinInput').value = tempFilters.manhole_depth_min;
-    document.getElementById('depthMaxInput').value = tempFilters.manhole_depth_max;
-    document.getElementById('lengthMinInput').value = tempFilters.length_min;
-    document.getElementById('lengthMaxInput').value = tempFilters.length_max;
-    document.getElementById('dateFromInput').value = tempFilters.date_from;
-    document.getElementById('dateToInput').value = tempFilters.date_to;
-    document.getElementById('searchTextInput').value = tempFilters.search_text;
+    if (suburbSelect) suburbSelect.value = tempFilters.suburb_nam;
+    if (townshipSelect) townshipSelect.value = tempFilters.township;
+    if (zoneSelect) zoneSelect.value = tempFilters.zone;
+    if (wardSelect) wardSelect.value = tempFilters.ward;
+    if (opZoneSelect) opZoneSelect.value = tempFilters.op_zone;
+    if (manholeStatusSelect) manholeStatusSelect.value = tempFilters.manhole_status;
+    if (pipeMaterialSelect) pipeMaterialSelect.value = tempFilters.pipe_material;
+    if (pipeSizeSelect) pipeSizeSelect.value = tempFilters.pipe_size;
+    if (pipeStatusSelect) pipeStatusSelect.value = tempFilters.pipe_status;
+    if (inspectorSelect) inspectorSelect.value = tempFilters.inspector;
+    if (depthMinInput) depthMinInput.value = tempFilters.manhole_depth_min;
+    if (depthMaxInput) depthMaxInput.value = tempFilters.manhole_depth_max;
+    if (lengthMinInput) lengthMinInput.value = tempFilters.length_min;
+    if (lengthMaxInput) lengthMaxInput.value = tempFilters.length_max;
+    if (dateFromInput) dateFromInput.value = tempFilters.date_from;
+    if (dateToInput) dateToInput.value = tempFilters.date_to;
+    if (searchTextInput) searchTextInput.value = tempFilters.search_text;
     
     updateFilterSummary();
     
@@ -460,23 +509,23 @@ function closeFilterModal() {
 
 async function applyFilters() {
     // Get values from dropdowns
-    tempFilters.suburb_nam = document.getElementById('suburbSelect').value;
-    tempFilters.township = document.getElementById('townshipSelect').value;
-    tempFilters.zone = document.getElementById('zoneSelect').value;
-    tempFilters.ward = document.getElementById('wardSelect').value;
-    tempFilters.op_zone = document.getElementById('opZoneSelect').value;
-    tempFilters.manhole_status = document.getElementById('manholeStatusSelect').value;
-    tempFilters.pipe_material = document.getElementById('pipeMaterialSelect').value;
-    tempFilters.pipe_size = document.getElementById('pipeSizeSelect').value;
-    tempFilters.pipe_status = document.getElementById('pipeStatusSelect').value;
-    tempFilters.inspector = document.getElementById('inspectorSelect').value;
-    tempFilters.manhole_depth_min = document.getElementById('depthMinInput').value;
-    tempFilters.manhole_depth_max = document.getElementById('depthMaxInput').value;
-    tempFilters.length_min = document.getElementById('lengthMinInput').value;
-    tempFilters.length_max = document.getElementById('lengthMaxInput').value;
-    tempFilters.date_from = document.getElementById('dateFromInput').value;
-    tempFilters.date_to = document.getElementById('dateToInput').value;
-    tempFilters.search_text = document.getElementById('searchTextInput').value;
+    if (suburbSelect) tempFilters.suburb_nam = suburbSelect.value;
+    if (townshipSelect) tempFilters.township = townshipSelect.value;
+    if (zoneSelect) tempFilters.zone = zoneSelect.value;
+    if (wardSelect) tempFilters.ward = wardSelect.value;
+    if (opZoneSelect) tempFilters.op_zone = opZoneSelect.value;
+    if (manholeStatusSelect) tempFilters.manhole_status = manholeStatusSelect.value;
+    if (pipeMaterialSelect) tempFilters.pipe_material = pipeMaterialSelect.value;
+    if (pipeSizeSelect) tempFilters.pipe_size = pipeSizeSelect.value;
+    if (pipeStatusSelect) tempFilters.pipe_status = pipeStatusSelect.value;
+    if (inspectorSelect) tempFilters.inspector = inspectorSelect.value;
+    if (depthMinInput) tempFilters.manhole_depth_min = depthMinInput.value;
+    if (depthMaxInput) tempFilters.manhole_depth_max = depthMaxInput.value;
+    if (lengthMinInput) tempFilters.length_min = lengthMinInput.value;
+    if (lengthMaxInput) tempFilters.length_max = lengthMaxInput.value;
+    if (dateFromInput) tempFilters.date_from = dateFromInput.value;
+    if (dateToInput) tempFilters.date_to = dateToInput.value;
+    if (searchTextInput) tempFilters.search_text = searchTextInput.value;
     
     currentFilters = JSON.parse(JSON.stringify(tempFilters));
     updateFilterButtonText();
@@ -494,23 +543,23 @@ function resetFilters() {
     };
     
     // Reset all dropdowns
-    document.getElementById('suburbSelect').value = 'all';
-    document.getElementById('townshipSelect').value = 'all';
-    document.getElementById('zoneSelect').value = 'all';
-    document.getElementById('wardSelect').value = 'all';
-    document.getElementById('opZoneSelect').value = 'all';
-    document.getElementById('manholeStatusSelect').value = 'all';
-    document.getElementById('pipeMaterialSelect').value = 'all';
-    document.getElementById('pipeSizeSelect').value = 'all';
-    document.getElementById('pipeStatusSelect').value = 'all';
-    document.getElementById('inspectorSelect').value = 'all';
-    document.getElementById('depthMinInput').value = '';
-    document.getElementById('depthMaxInput').value = '';
-    document.getElementById('lengthMinInput').value = '';
-    document.getElementById('lengthMaxInput').value = '';
-    document.getElementById('dateFromInput').value = '';
-    document.getElementById('dateToInput').value = '';
-    document.getElementById('searchTextInput').value = '';
+    if (suburbSelect) suburbSelect.value = 'all';
+    if (townshipSelect) townshipSelect.value = 'all';
+    if (zoneSelect) zoneSelect.value = 'all';
+    if (wardSelect) wardSelect.value = 'all';
+    if (opZoneSelect) opZoneSelect.value = 'all';
+    if (manholeStatusSelect) manholeStatusSelect.value = 'all';
+    if (pipeMaterialSelect) pipeMaterialSelect.value = 'all';
+    if (pipeSizeSelect) pipeSizeSelect.value = 'all';
+    if (pipeStatusSelect) pipeStatusSelect.value = 'all';
+    if (inspectorSelect) inspectorSelect.value = 'all';
+    if (depthMinInput) depthMinInput.value = '';
+    if (depthMaxInput) depthMaxInput.value = '';
+    if (lengthMinInput) lengthMinInput.value = '';
+    if (lengthMaxInput) lengthMaxInput.value = '';
+    if (dateFromInput) dateFromInput.value = '';
+    if (dateToInput) dateToInput.value = '';
+    if (searchTextInput) searchTextInput.value = '';
     
     updateFilterSummary();
     
@@ -563,6 +612,25 @@ async function initFilters() {
         document.body.insertAdjacentHTML('beforeend', renderModal());
         attachModalEvents();
     }
+    
+    // Initialize DOM element references AFTER modal is rendered
+    suburbSelect = document.getElementById('suburbSelect');
+    townshipSelect = document.getElementById('townshipSelect');
+    zoneSelect = document.getElementById('zoneSelect');
+    wardSelect = document.getElementById('wardSelect');
+    opZoneSelect = document.getElementById('opZoneSelect');
+    manholeStatusSelect = document.getElementById('manholeStatusSelect');
+    pipeMaterialSelect = document.getElementById('pipeMaterialSelect');
+    pipeSizeSelect = document.getElementById('pipeSizeSelect');
+    pipeStatusSelect = document.getElementById('pipeStatusSelect');
+    inspectorSelect = document.getElementById('inspectorSelect');
+    depthMinInput = document.getElementById('depthMinInput');
+    depthMaxInput = document.getElementById('depthMaxInput');
+    lengthMinInput = document.getElementById('lengthMinInput');
+    lengthMaxInput = document.getElementById('lengthMaxInput');
+    dateFromInput = document.getElementById('dateFromInput');
+    dateToInput = document.getElementById('dateToInput');
+    searchTextInput = document.getElementById('searchTextInput');
     
     // Update filter button
     const filterBtn = document.getElementById('mainFilterBtn');
