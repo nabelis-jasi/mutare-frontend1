@@ -4,6 +4,7 @@
 // Data fetched from Python Flask backend API
 // Integrated with Report Processor and Statistics
 // FIXED: Suburb polygon rendering with proper styling and coordinate validation
+// ADDED: Filter change listener to update map dynamically
 // ============================================
 
 let map = null;
@@ -23,6 +24,9 @@ let originalPipelineColor = '#32cd32';
 
 // Cadastre layer
 let currentCadastreLayer = null;
+
+// Loading indicator for map
+let mapLoadingIndicator = null;
 
 // ---------- API CONFIGURATION ----------
 const API_BASE_URL = 'http://localhost:5000/api';
@@ -82,7 +86,41 @@ async function fetchLayerFromAPI(endpoint, bounds = null, simplify = 0.001, limi
     }
 }
 
-// Simple loading indicator
+// ============================================
+// MAP LOADING INDICATOR
+// ============================================
+
+function showMapLoading(show, message = 'Updating map...') {
+    if (!mapLoadingIndicator) {
+        mapLoadingIndicator = document.createElement('div');
+        mapLoadingIndicator.id = 'map-loading-indicator';
+        mapLoadingIndicator.style.cssText = `
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.8);
+            color: #8fdc00;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 14px;
+            z-index: 2000;
+            display: none;
+            backdrop-filter: blur(4px);
+            border: 1px solid #8fdc00;
+            white-space: nowrap;
+        `;
+        document.querySelector('.map-container')?.appendChild(mapLoadingIndicator);
+    }
+    
+    if (mapLoadingIndicator) {
+        mapLoadingIndicator.style.display = show ? 'flex' : 'none';
+        if (show) mapLoadingIndicator.innerHTML = `⏳ ${message}`;
+    }
+}
+
+// Simple loading indicator (bottom right)
 let loadingDiv = null;
 function showLoadingIndicator(show) {
     if (!loadingDiv) {
@@ -101,7 +139,195 @@ function showLoadingIndicator(show) {
     }
 }
 
-// Tile definitions
+// ============================================
+// FILTER CHANGE LISTENER
+// ============================================
+
+function setupFilterListener() {
+    document.addEventListener('filtersChanged', async (event) => {
+        const { manholes, pipelines, filters, manholeCount, pipelineCount, totalCount } = event.detail;
+        console.log('🎯 Filters changed, updating map...', { manholeCount, pipelineCount, filters });
+        
+        showMapLoading(true, `Filtering: ${totalCount || 0} features...`);
+        
+        try {
+            // Clear existing layers
+            clearManholes();
+            clearPipelines();
+            
+            // Load filtered manholes
+            if (manholes && manholes.length > 0) {
+                const manholesGeoJSON = {
+                    type: 'FeatureCollection',
+                    features: manholes.map(m => ({
+                        type: 'Feature',
+                        geometry: {
+                            type: 'Point',
+                            coordinates: [m.lng || m.longitude, m.lat || m.latitude]
+                        },
+                        properties: {
+                            manhole_id: m.manhole_id,
+                            suburb: m.suburb,
+                            status: m.status,
+                            depth: m.depth,
+                            inspector: m.inspector,
+                            inspection_date: m.inspection_date
+                        }
+                    })).filter(f => f.geometry.coordinates[0] && f.geometry.coordinates[1])
+                };
+                loadManholesFromGeoJSON(manholesGeoJSON);
+                console.log(`✅ Loaded ${manholes.length} filtered manholes`);
+            } else {
+                console.log('No manholes match the current filters');
+            }
+            
+            // Load filtered pipelines
+            if (pipelines && pipelines.length > 0) {
+                const pipelinesGeoJSON = {
+                    type: 'FeatureCollection',
+                    features: pipelines.map(p => ({
+                        type: 'Feature',
+                        geometry: p.geometry,
+                        properties: {
+                            pipe_id: p.pipe_id,
+                            status: p.status,
+                            material: p.material,
+                            diameter: p.diameter,
+                            length: p.length
+                        }
+                    }))
+                };
+                loadPipelinesFromGeoJSON(pipelinesGeoJSON);
+                console.log(`✅ Loaded ${pipelines.length} filtered pipelines`);
+            } else {
+                console.log('No pipelines match the current filters');
+            }
+            
+            // Update statistics display if element exists
+            updateMapStats(manholes?.length || 0, pipelines?.length || 0);
+            
+            // Fit bounds to show filtered data
+            fitToVisibleLayers();
+            
+        } catch (error) {
+            console.error('Error updating map with filters:', error);
+            showMapLoading(false);
+        } finally {
+            setTimeout(() => showMapLoading(false), 500);
+        }
+    });
+    
+    console.log('✅ Filter change listener registered');
+}
+
+function updateMapStats(manholeCount, pipelineCount) {
+    const statsEl = document.getElementById('mapStats');
+    if (statsEl) {
+        statsEl.innerHTML = `🕳️ ${manholeCount} manholes | 📏 ${pipelineCount} pipelines`;
+    }
+}
+
+function fitToVisibleLayers() {
+    if (!map) return;
+    
+    const allLayers = [];
+    
+    // Add manhole markers
+    if (currentManholeMarkers.length > 0) {
+        currentManholeMarkers.forEach(m => allLayers.push(m.getLatLng()));
+    }
+    
+    // Add pipeline layer bounds
+    if (currentPipelineLayer) {
+        try {
+            const bounds = currentPipelineLayer.getBounds();
+            if (bounds.isValid()) {
+                allLayers.push(bounds.getSouthWest());
+                allLayers.push(bounds.getNorthEast());
+            }
+        } catch(e) {}
+    }
+    
+    // Add suburb layer bounds
+    if (currentSuburbLayer) {
+        try {
+            const bounds = currentSuburbLayer.getBounds();
+            if (bounds.isValid()) {
+                allLayers.push(bounds.getSouthWest());
+                allLayers.push(bounds.getNorthEast());
+            }
+        } catch(e) {}
+    }
+    
+    if (allLayers.length > 0) {
+        const bounds = L.latLngBounds(allLayers);
+        if (bounds.isValid()) {
+            map.fitBounds(bounds, { padding: [50, 50] });
+            console.log('📐 Map fit to visible layers');
+        }
+    }
+}
+
+// ============================================
+// CLEAR FUNCTIONS
+// ============================================
+
+function clearManholes() {
+    currentManholeMarkers.forEach(m => {
+        if (map && map.hasLayer(m)) map.removeLayer(m);
+    });
+    currentManholeMarkers = [];
+    console.log('Manholes cleared from map');
+}
+
+function clearPipelines() {
+    if (currentPipelineLayer && map && map.hasLayer(currentPipelineLayer)) {
+        map.removeLayer(currentPipelineLayer);
+        currentPipelineLayer = null;
+        console.log('Pipelines cleared from map');
+    }
+}
+
+function clearSuburbs() {
+    if (currentSuburbLayer && map && map.hasLayer(currentSuburbLayer)) {
+        if (suburbLabels.length) {
+            suburbLabels.forEach(label => {
+                if (map.hasLayer(label)) map.removeLayer(label);
+            });
+            suburbLabels = [];
+        }
+        map.removeLayer(currentSuburbLayer);
+        currentSuburbLayer = null;
+        console.log('Suburbs cleared from map');
+    }
+}
+
+function clearCadastre() {
+    if (currentCadastreLayer && map && map.hasLayer(currentCadastreLayer)) {
+        if (cadastreLabels.length) {
+            cadastreLabels.forEach(label => {
+                if (map.hasLayer(label)) map.removeLayer(label);
+            });
+            cadastreLabels = [];
+        }
+        map.removeLayer(currentCadastreLayer);
+        currentCadastreLayer = null;
+        console.log('Cadastre cleared from map');
+    }
+}
+
+function clearComplaints() {
+    currentComplaintMarkers.forEach(m => {
+        if (map && map.hasLayer(m)) map.removeLayer(m);
+    });
+    currentComplaintMarkers = [];
+    console.log('Complaints cleared from map');
+}
+
+// ============================================
+// TILE DEFINITIONS
+// ============================================
+
 const TILES = {
     osm: { id: 'osm', label: 'Street', icon: '🗺️', url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', attr: '&copy; OpenStreetMap', maxZoom: 19 },
     satellite: { id: 'satellite', label: 'Satellite', icon: '🛰️', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attr: 'Tiles &copy; Esri', maxZoom: 19 },
@@ -112,8 +338,11 @@ const TILES = {
 let currentTileLayer = null;
 let currentOverlayLayer = null;
 
-// Initialize map
-function initMap(centerLat = -26.195, centerLng = 28.034, zoom = 12) {
+// ============================================
+// INITIALIZE MAP
+// ============================================
+
+function initMap(centerLat = -18.97, centerLng = 32.67, zoom = 13) {
     console.log('initMap called');
     const mapElement = document.getElementById('map');
     if (!mapElement) {
@@ -140,6 +369,9 @@ function initMap(centerLat = -26.195, centerLng = 28.034, zoom = 12) {
         console.log('Map created successfully');
         setTimeout(() => addDropdownTileSelector(), 100);
         
+        // Setup filter listener
+        setupFilterListener();
+        
         document.dispatchEvent(new CustomEvent('mapReady'));
         addPulseAnimation();
         
@@ -150,7 +382,10 @@ function initMap(centerLat = -26.195, centerLng = 28.034, zoom = 12) {
     }
 }
 
-// Switch base map
+// ============================================
+// SWITCH BASE MAP
+// ============================================
+
 function switchBaseMap(tileType) {
     if (!map) return;
     const tile = TILES[tileType];
@@ -214,19 +449,16 @@ function addDropdownTileSelector() {
 }
 
 // ============================================
-// LOAD MANHOLES - ONLY AFFECTED ONES CHANGE COLOR
+// LOAD MANHOLES
 // ============================================
+
 function loadManholesFromGeoJSON(geojson) {
     if (!map) {
         console.error('Map not initialized, cannot load manholes');
         return;
     }
     
-    // Clear existing markers
-    currentManholeMarkers.forEach(m => {
-        if (map.hasLayer(m)) map.removeLayer(m);
-    });
-    currentManholeMarkers = [];
+    clearManholes();
     
     if (!geojson || !geojson.features || geojson.features.length === 0) {
         console.log('No manholes data to load');
@@ -239,20 +471,19 @@ function loadManholesFromGeoJSON(geojson) {
     
     geojson.features.forEach(feature => {
         const coords = feature.geometry?.coordinates;
-        if (!coords) return;
+        if (!coords || !coords[0] || !coords[1]) return;
         const props = feature.properties;
         
-        // Color based on database status
-        let color = '#9b59b6'; // purple default (normal/good)
+        let color = '#9b59b6';
         let statusText = 'Normal';
         
         if (props.status === 'critical' || props.status === 'Blocked') {
-            color = '#dc3545'; // red
+            color = '#dc3545';
             statusText = 'Critical';
             criticalCount++;
         } else if (props.status === 'warning' || props.status === 'Partial') {
-            color = '#ffc107'; // orange/yellow
-            statusText = 'Warning - Needs Attention';
+            color = '#ffc107';
+            statusText = 'Warning';
             warningCount++;
         } else {
             goodCount++;
@@ -267,8 +498,8 @@ function loadManholesFromGeoJSON(geojson) {
         });
         
         marker.bindPopup(`
-            <b>🕳️ ${props.manhole_id || props.id || 'Manhole'}</b><br>
-            Suburb: ${props.suburb || props.suburb_nam || 'N/A'}<br>
+            <b>🕳️ ${props.manhole_id || 'Manhole'}</b><br>
+            Suburb: ${props.suburb || 'N/A'}<br>
             Status: <span style="color:${color}">${statusText}</span><br>
             Depth: ${props.depth || 'N/A'} m<br>
             Inspector: ${props.inspector || 'N/A'}
@@ -277,22 +508,20 @@ function loadManholesFromGeoJSON(geojson) {
         currentManholeMarkers.push(marker);
     });
     
-    console.log(`Loaded ${currentManholeMarkers.length} manholes (${criticalCount} critical, ${warningCount} warning, ${goodCount} good) to map`);
+    console.log(`Loaded ${currentManholeMarkers.length} manholes (${criticalCount} critical, ${warningCount} warning, ${goodCount} good)`);
 }
 
 // ============================================
 // LOAD PIPELINES
 // ============================================
+
 function loadPipelinesFromGeoJSON(geojson) {
     if (!map) {
         console.error('Map not initialized, cannot load pipelines');
         return;
     }
     
-    if (currentPipelineLayer) {
-        if (map.hasLayer(currentPipelineLayer)) map.removeLayer(currentPipelineLayer);
-        currentPipelineLayer = null;
-    }
+    clearPipelines();
     
     if (!geojson || !geojson.features || geojson.features.length === 0) {
         console.log('No pipelines data to load');
@@ -302,7 +531,7 @@ function loadPipelinesFromGeoJSON(geojson) {
     currentPipelineLayer = L.geoJSON(geojson, {
         style: (feature) => {
             const status = feature.properties?.status;
-            let color = '#32cd32'; // lime green default
+            let color = '#32cd32';
             if (status === 'Blocked' || status === 'critical') color = '#dc3545';
             else if (status === 'Partial' || status === 'warning') color = '#ffc107';
             return { color: color, weight: 4, opacity: 0.8 };
@@ -310,9 +539,9 @@ function loadPipelinesFromGeoJSON(geojson) {
         onEachFeature: (feature, layer) => {
             const props = feature.properties;
             layer.bindPopup(`
-                <b>📏 Pipe ${props.pipe_id || props.id || 'unknown'}</b><br>
+                <b>📏 Pipe ${props.pipe_id || 'unknown'}</b><br>
                 Material: ${props.material || 'N/A'}<br>
-                Diameter: ${props.diameter || props.size || 'N/A'} mm<br>
+                Diameter: ${props.diameter || 'N/A'} mm<br>
                 Length: ${props.length || 'N/A'} m<br>
                 Status: ${props.status || 'good'}
             `);
@@ -322,25 +551,16 @@ function loadPipelinesFromGeoJSON(geojson) {
 }
 
 // ============================================
-// LOAD SUBURBS - FIXED VERSION WITH PROPER STYLING AND COORDINATE VALIDATION
+// LOAD SUBURBS
 // ============================================
+
 function loadSuburbsFromGeoJSON(geojson) {
     if (!map) {
         console.error('Map not initialized, cannot load suburbs');
         return;
     }
     
-    if (currentSuburbLayer) {
-        // Remove old labels
-        if (suburbLabels.length) {
-            suburbLabels.forEach(label => {
-                if (map.hasLayer(label)) map.removeLayer(label);
-            });
-            suburbLabels = [];
-        }
-        if (map.hasLayer(currentSuburbLayer)) map.removeLayer(currentSuburbLayer);
-        currentSuburbLayer = null;
-    }
+    clearSuburbs();
     
     if (!geojson || !geojson.features || geojson.features.length === 0) {
         console.log('No suburbs data to load');
@@ -349,144 +569,50 @@ function loadSuburbsFromGeoJSON(geojson) {
     
     console.log(`Loading ${geojson.features.length} suburbs to map`);
     
-    // DEBUG: Log first feature to see what properties are available
-    if (geojson.features.length > 0) {
-        const firstFeature = geojson.features[0];
-        console.log('First suburb feature sample:', firstFeature);
-        console.log('Geometry type:', firstFeature?.geometry?.type);
-        
-        // Check coordinates to detect SRID issue
-        let sampleCoords = null;
-        if (firstFeature?.geometry?.type === 'Polygon') {
-            sampleCoords = firstFeature.geometry.coordinates[0]?.[0];
-        } else if (firstFeature?.geometry?.type === 'MultiPolygon') {
-            sampleCoords = firstFeature.geometry.coordinates[0]?.[0]?.[0];
-        }
-        
-        if (sampleCoords) {
-            const lon = Math.abs(sampleCoords[0]);
-            const lat = Math.abs(sampleCoords[1]);
-            console.log(`Sample coordinates: [${sampleCoords[0]}, ${sampleCoords[1]}]`);
-            
-            if (lon > 180 || lat > 90) {
-                console.error('⚠️ COORDINATE PROBLEM: Values look like meters, not degrees!');
-                console.error('  Fix: Need to transform SRID to 4326 in backend');
-            } else if (lon > 0 && lon < 180 && lat > -90 && lat < 90) {
-                console.log('✓ Coordinates look like valid decimal degrees');
-            } else {
-                console.log('Coordinates need validation:', {lon, lat});
-            }
-        }
-    }
-    
     // Style for suburbs - WITH FILL FOR VISIBILITY
     const suburbStyle = {
-        color: '#00d4ff',      // Cyan border
-        weight: 3,              // Thick border
+        color: '#00d4ff',
+        weight: 3,
         opacity: 0.9,
-        fill: true,             // ENABLED: Fill so polygons are visible
-        fillColor: '#00d4ff',  // Cyan fill
-        fillOpacity: 0.15      // Semi-transparent so you can see through
+        fill: true,
+        fillColor: '#00d4ff',
+        fillOpacity: 0.15
     };
     
     currentSuburbLayer = L.geoJSON(geojson, {
         style: suburbStyle,
         onEachFeature: (feature, layer) => {
             const props = feature.properties;
+            const suburbName = props.suburb_nam || props.name || 'Unnamed';
             
-            // Handle different property name possibilities
-            const suburbName = props.suburb_nam || props.name || props.SUBURB_NAM || 'Unnamed';
-            const township = props.township || props.TOWNSHIP || 'N/A';
-            const ward = props.ward || props.WARD || 'N/A';
-            const zone = props.zone || props.ZONE || 'N/A';
-            const opZone = props.op_zone || props.OP_ZONE || 'N/A';
-            
-            // Add popup with suburb info
             layer.bindPopup(`
                 <b>🏘️ ${suburbName}</b><br>
-                Township: ${township}<br>
-                Ward: ${ward}<br>
-                Zone: ${zone}<br>
-                Op Zone: ${opZone}
+                Township: ${props.township || 'N/A'}<br>
+                Ward: ${props.ward || 'N/A'}<br>
+                Zone: ${props.zone || 'N/A'}<br>
+                Op Zone: ${props.op_zone || 'N/A'}
             `);
             
-            // Add hover effect
             layer.on('mouseover', function() {
-                layer.setStyle({
-                    fillOpacity: 0.35,
-                    weight: 4,
-                    color: '#ff7800'
-                });
+                layer.setStyle({ fillOpacity: 0.35, weight: 4, color: '#ff7800' });
             });
             
             layer.on('mouseout', function() {
                 layer.setStyle(suburbStyle);
             });
-            
-            // Add label - try backend centroid first, then calculate
-            let labelLat = props.label_lat || props.LABEL_LAT;
-            let labelLng = props.label_lng || props.LABEL_LNG;
-            
-            if (labelLat && labelLng && !isNaN(labelLat) && !isNaN(labelLng)) {
-                // Use backend-provided centroid
-                const label = L.marker([labelLat, labelLng], {
-                    icon: L.divIcon({
-                        className: 'suburb-label',
-                        html: `<div style="font-family: 'Rajdhani', monospace; font-size: 10px; font-weight: 600; color: #00d4ff; background: rgba(8,15,14,0.85); padding: 2px 6px; border-radius: 3px; border: 0.5px solid rgba(0,212,255,0.5); white-space: nowrap; text-transform: uppercase; letter-spacing: 0.5px; backdrop-filter: blur(4px);">${suburbName}</div>`,
-                        iconSize: [null, null]
-                    }),
-                    interactive: false,
-                    pane: 'labels'
-                }).addTo(map);
-                suburbLabels.push(label);
-            } else {
-                // Fallback: calculate centroid from polygon bounds
-                try {
-                    const bounds = layer.getBounds();
-                    if (bounds && bounds.isValid()) {
-                        const center = bounds.getCenter();
-                        if (center && center.lat && center.lng) {
-                            const label = L.marker([center.lat, center.lng], {
-                                icon: L.divIcon({
-                                    className: 'suburb-label',
-                                    html: `<div style="font-family: 'Rajdhani', monospace; font-size: 9px; font-weight: 600; color: #00d4ff; background: rgba(8,15,14,0.75); padding: 2px 4px; border-radius: 2px; white-space: nowrap; backdrop-filter: blur(3px);">${suburbName}</div>`,
-                                    iconSize: [null, null]
-                                }),
-                                interactive: false
-                            }).addTo(map);
-                            suburbLabels.push(label);
-                        }
-                    }
-                } catch(e) {
-                    console.log(`Could not add label for ${suburbName}:`, e);
-                }
-            }
         }
     }).addTo(map);
     
-    // Auto-zoom to show suburbs if no other layers are loaded
-    try {
-        const bounds = currentSuburbLayer.getBounds();
-        if (bounds.isValid() && currentManholeMarkers.length === 0 && currentPipelineLayer === null) {
-            map.fitBounds(bounds);
-            console.log('Map zoomed to suburb bounds');
-        }
-    } catch(e) {
-        console.log('Could not fit bounds:', e);
-    }
-    
-    console.log(`Suburbs layer added with ${suburbLabels.length} labels`);
+    console.log(`Suburbs layer added with ${geojson.features.length} suburbs`);
 }
 
 // ============================================
 // LOAD COMPLAINTS
 // ============================================
+
 function loadComplaintsFromGeoJSON(geojson) {
     if (!map) return;
-    currentComplaintMarkers.forEach(m => {
-        if (map.hasLayer(m)) map.removeLayer(m);
-    });
-    currentComplaintMarkers = [];
+    clearComplaints();
     
     if (!geojson || !geojson.features || geojson.features.length === 0) return;
     
@@ -511,21 +637,12 @@ function loadComplaintsFromGeoJSON(geojson) {
 }
 
 // ============================================
-// LOAD CADASTRE - Thin green border, no fill, with stand number labels
+// LOAD CADASTRE
 // ============================================
+
 function loadCadastreFromGeoJSON(geojson) {
     if (!map) return;
-    if (currentCadastreLayer) {
-        // Remove old labels
-        if (cadastreLabels.length) {
-            cadastreLabels.forEach(label => {
-                if (map.hasLayer(label)) map.removeLayer(label);
-            });
-            cadastreLabels = [];
-        }
-        if (map.hasLayer(currentCadastreLayer)) map.removeLayer(currentCadastreLayer);
-        currentCadastreLayer = null;
-    }
+    clearCadastre();
     
     if (!geojson || !geojson.features || geojson.features.length === 0) {
         console.log('No cadastre data to load');
@@ -536,25 +653,22 @@ function loadCadastreFromGeoJSON(geojson) {
     
     currentCadastreLayer = L.geoJSON(geojson, {
         style: {
-            color: '#2e7d52',      // Green muted border
-            weight: 1.5,            // Thin border
+            color: '#2e7d52',
+            weight: 1.5,
             opacity: 0.6,
-            fill: false,            // No fill
+            fill: false,
             fillOpacity: 0
         },
         onEachFeature: (feature, layer) => {
             const props = feature.properties;
-            const standNumber = props.stand_number || props.stand_num || props.STAND_NUMBER;
+            const standNumber = props.stand_number;
             
             if (standNumber) {
-                // Get center of polygon for label placement
                 const center = layer.getBounds().getCenter();
-                
-                // Add stand number label at centroid
                 const label = L.marker(center, {
                     icon: L.divIcon({
                         className: 'cadastre-label',
-                        html: `<div style="font-family: 'JetBrains Mono', monospace; font-size: 8px; font-weight: 500; color: #a5d6a7; background: rgba(46,82,69,0.8); padding: 2px 4px; border-radius: 2px; border: 0.5px solid #2e7d52; white-space: nowrap;">${standNumber}</div>`,
+                        html: `<div style="font-family: monospace; font-size: 8px; color: #a5d6a7; background: rgba(46,82,69,0.8); padding: 2px 4px; border-radius: 2px;">${standNumber}</div>`,
                         iconSize: [null, null]
                     }),
                     interactive: false
@@ -562,22 +676,22 @@ function loadCadastreFromGeoJSON(geojson) {
                 cadastreLabels.push(label);
             }
             
-            // Add popup with stand info
             layer.bindPopup(`
                 <b>🏠 Stand: ${standNumber || 'N/A'}</b><br>
-                Suburb: ${props.suburb_name || props.suburb_nam || 'N/A'}<br>
+                Suburb: ${props.suburb_name || 'N/A'}<br>
                 Ward: ${props.ward || 'N/A'}<br>
                 Area: ${props.area_hectares ? props.area_hectares.toFixed(2) : 'N/A'} ha
             `);
         }
     }).addTo(map);
     
-    console.log(`Cadastre loaded to map: ${geojson.features.length} stands with ${cadastreLabels.length} labels`);
+    console.log(`Cadastre loaded: ${geojson.features.length} stands`);
 }
 
 // ============================================
 // COMPLAINTS WITH BUFFERS
 // ============================================
+
 function showComplaintsWithBuffers(complaints, reportDate) {
     clearComplaintBuffers();
     if (!complaints?.length) return;
@@ -621,13 +735,6 @@ function clearComplaintBuffers() {
     currentComplaintBuffers = [];
 }
 
-function clearComplaints() {
-    currentComplaintMarkers.forEach(m => {
-        if (map.hasLayer(m)) map.removeLayer(m);
-    });
-    currentComplaintMarkers = [];
-}
-
 function showComplaintMarkers(complaints) {
     clearComplaints();
     if (!complaints?.length) return;
@@ -642,47 +749,9 @@ function showComplaintMarkers(complaints) {
 }
 
 // ============================================
-// CLEAR LAYERS (exported for layer manager)
-// ============================================
-function clearPipelines() {
-    if (currentPipelineLayer && map && map.hasLayer(currentPipelineLayer)) {
-        map.removeLayer(currentPipelineLayer);
-        currentPipelineLayer = null;
-        console.log('Pipelines cleared from map');
-    }
-}
-
-function clearSuburbs() {
-    if (currentSuburbLayer && map && map.hasLayer(currentSuburbLayer)) {
-        if (suburbLabels.length) {
-            suburbLabels.forEach(label => {
-                if (map.hasLayer(label)) map.removeLayer(label);
-            });
-            suburbLabels = [];
-        }
-        map.removeLayer(currentSuburbLayer);
-        currentSuburbLayer = null;
-        console.log('Suburbs cleared from map');
-    }
-}
-
-function clearCadastre() {
-    if (currentCadastreLayer && map && map.hasLayer(currentCadastreLayer)) {
-        if (cadastreLabels.length) {
-            cadastreLabels.forEach(label => {
-                if (map.hasLayer(label)) map.removeLayer(label);
-            });
-            cadastreLabels = [];
-        }
-        map.removeLayer(currentCadastreLayer);
-        currentCadastreLayer = null;
-        console.log('Cadastre cleared from map');
-    }
-}
-
-// ============================================
 // HEATMAP FUNCTIONS
 // ============================================
+
 function showHeatmapFromManholes(manholesArray) {
     if (!map) return;
     if (heatLayer && map.hasLayer(heatLayer)) map.removeLayer(heatLayer);
@@ -713,11 +782,11 @@ function clearHeatmap() {
 // ============================================
 // UTILITY FUNCTIONS
 // ============================================
+
 function fitToBounds() {
     if (!map) return;
     const allMarkers = [...currentManholeMarkers, ...currentComplaintMarkers];
     if (!allMarkers.length) {
-        // If no markers, try to fit to suburbs
         if (currentSuburbLayer) {
             try {
                 const bounds = currentSuburbLayer.getBounds();
@@ -740,11 +809,7 @@ function getMap() { return map; }
 
 function loadManholes(manholesArray) {
     if (!manholesArray?.length) {
-        // Clear manholes if empty array
-        currentManholeMarkers.forEach(m => {
-            if (map && map.hasLayer(m)) map.removeLayer(m);
-        });
-        currentManholeMarkers = [];
+        clearManholes();
         return;
     }
     const geojson = {
@@ -756,12 +821,6 @@ function loadManholes(manholesArray) {
         }))
     };
     loadManholesFromGeoJSON(geojson);
-}
-
-function updateLayers(manholes, pipelinesGeoJSON) {
-    console.warn('updateLayers is deprecated. Use layer manager functions instead.');
-    if (manholes?.length) loadManholes(manholes);
-    if (pipelinesGeoJSON) loadPipelinesFromGeoJSON(pipelinesGeoJSON);
 }
 
 function addPulseAnimation() {
@@ -776,6 +835,7 @@ function addPulseAnimation() {
 // ============================================
 // EXPORTS
 // ============================================
+
 export default {
     init: initMap,
     switchBaseMap: switchBaseMap,
@@ -798,8 +858,7 @@ export default {
     showHeatmapFromComplaints: showHeatmapFromComplaints,
     clearHeatmap: clearHeatmap,
     fitToBounds: fitToBounds,
-    fitToComplaints: fitToComplaints,
-    updateLayers: updateLayers
+    fitToComplaints: fitToComplaints
 };
 
 // Global function for button callbacks
@@ -808,7 +867,6 @@ window.markComplaintResolved = async (complaintId) => {
         const response = await fetch(`${API_BASE_URL}/complaints/${complaintId}/resolve`, { method: 'PUT' });
         if (response.ok) {
             alert('Complaint marked as resolved!');
-            // Trigger layer manager to refresh visible layers
             document.dispatchEvent(new CustomEvent('dataRefreshed'));
         }
     } catch (error) {
