@@ -1,5 +1,5 @@
 // components/filters.js - Complete Working Cascading Filter
-// Matches Tactical Ops Theme
+// Updated to match actual database column names (pipe_mat, pipe_size, bloc_stat, insp_date)
 
 const API_BASE_URL = 'http://localhost:5000/api';
 
@@ -24,7 +24,7 @@ let currentFilters = {
     search_text: ''
 };
 
-// Filter options data
+// Filter options data - will be populated from backend
 let filterData = {
     suburbs: [],
     townships: [],
@@ -32,10 +32,10 @@ let filterData = {
     wards: [],
     op_zones: [],
     inspectors: [],
-    manhole_statuses: ['good', 'warning', 'critical', 'blocked', 'partial'],
-    pipe_materials: ['E/W', 'PVC', 'Concrete', 'Cast Iron', 'HDPE'],
-    pipe_sizes: [50, 75, 100, 150, 200, 250, 300, 375, 450, 525, 600],
-    pipe_statuses: ['good', 'warning', 'critical', 'blocked', 'partial']
+    manhole_statuses: [],
+    pipe_materials: [],
+    pipe_sizes: [],
+    pipe_statuses: []
 };
 
 let tempFilters = { ...currentFilters };
@@ -60,6 +60,9 @@ let dateFromInput = null;
 let dateToInput = null;
 let searchTextInput = null;
 
+// Loading state
+let isFiltering = false;
+
 // ============================================
 // LOAD DATA FROM BACKEND
 // ============================================
@@ -77,21 +80,80 @@ async function loadFilterData() {
             filterData.zones = data.zones || [];
             filterData.wards = data.wards || [];
             filterData.op_zones = data.op_zones || [];
-            console.log('Filter options loaded:', filterData);
+            console.log('Location filters loaded:', {
+                suburbs: filterData.suburbs.length,
+                townships: filterData.townships.length,
+                zones: filterData.zones.length,
+                wards: filterData.wards.length,
+                op_zones: filterData.op_zones.length
+            });
         } else {
             console.warn('Failed to load filter options:', response.status);
         }
         
-        // Load inspectors from manholes
+        // Load manhole filter options (statuses, inspectors, depth range)
         try {
-            const manholesRes = await fetch(`${API_BASE_URL}/manholes/list?limit=5000`);
-            if (manholesRes.ok) {
-                const manholes = await manholesRes.json();
-                filterData.inspectors = [...new Set(manholes.map(m => m.inspector).filter(i => i))];
-                console.log(`Loaded ${filterData.inspectors.length} inspectors`);
+            const manholeOptionsRes = await fetch(`${API_BASE_URL}/manholes/filter-options`);
+            if (manholeOptionsRes.ok) {
+                const data = await manholeOptionsRes.json();
+                if (data.statuses && data.statuses.length) {
+                    filterData.manhole_statuses = data.statuses;
+                }
+                if (data.inspectors && data.inspectors.length) {
+                    filterData.inspectors = data.inspectors;
+                }
+                console.log('Manhole filters loaded:', {
+                    statuses: filterData.manhole_statuses.length,
+                    inspectors: filterData.inspectors.length
+                });
             }
         } catch (e) {
-            console.warn('Could not load inspectors:', e);
+            console.warn('Could not load manhole options:', e);
+            // Fallback defaults
+            filterData.manhole_statuses = ['good', 'warning', 'critical', 'blocked', 'partial'];
+        }
+        
+        // Load pipeline filter options (materials, sizes, statuses)
+        try {
+            const pipelineOptionsRes = await fetch(`${API_BASE_URL}/pipelines/filter-options`);
+            if (pipelineOptionsRes.ok) {
+                const data = await pipelineOptionsRes.json();
+                if (data.materials && data.materials.length) {
+                    filterData.pipe_materials = data.materials;
+                }
+                if (data.sizes && data.sizes.length) {
+                    filterData.pipe_sizes = data.sizes;
+                }
+                if (data.statuses && data.statuses.length) {
+                    filterData.pipe_statuses = data.statuses;
+                }
+                console.log('Pipeline filters loaded:', {
+                    materials: filterData.pipe_materials.length,
+                    sizes: filterData.pipe_sizes.length,
+                    statuses: filterData.pipe_statuses.length
+                });
+            }
+        } catch (e) {
+            console.warn('Could not load pipeline options:', e);
+            // Fallback defaults
+            filterData.pipe_materials = ['E/W', 'PVC', 'Concrete', 'Cast Iron', 'HDPE'];
+            filterData.pipe_sizes = [50, 75, 100, 150, 200, 250, 300, 375, 450, 525, 600];
+            filterData.pipe_statuses = ['good', 'warning', 'critical', 'blocked', 'partial'];
+        }
+        
+        // Also load inspectors from manholes list as backup
+        try {
+            const manholesRes = await fetch(`${API_BASE_URL}/manholes/list?limit=1000`);
+            if (manholesRes.ok) {
+                const manholes = await manholesRes.json();
+                const inspectorsFromList = [...new Set(manholes.map(m => m.inspector).filter(i => i && i !== 'all'))];
+                if (inspectorsFromList.length > filterData.inspectors.length) {
+                    filterData.inspectors = inspectorsFromList;
+                    console.log(`Loaded ${filterData.inspectors.length} inspectors from manholes list`);
+                }
+            }
+        } catch (e) {
+            console.warn('Could not load inspectors from list:', e);
         }
         
     } catch (error) {
@@ -128,14 +190,19 @@ async function updateCascadingOptions(suburb) {
                 filterData.zones = data.zones || [];
                 filterData.wards = data.wards || [];
                 filterData.op_zones = data.op_zones || [];
-                console.log(`Cascading options for ${suburb}:`, filterData);
+                console.log(`Cascading options for ${suburb}:`, {
+                    townships: filterData.townships.length,
+                    zones: filterData.zones.length,
+                    wards: filterData.wards.length,
+                    op_zones: filterData.op_zones.length
+                });
             }
         } catch (error) {
             console.error('Error updating cascading options:', error);
         }
     }
     
-    // Update dropdown UIs (check if elements exist)
+    // Update dropdown UIs
     if (townshipSelect) {
         townshipSelect.innerHTML = '<option value="all">ALL</option>' + 
             filterData.townships.map(t => `<option value="${t}">${t}</option>`).join('');
@@ -155,29 +222,48 @@ async function updateCascadingOptions(suburb) {
 }
 
 // ============================================
-// API FUNCTIONS
+// API FUNCTIONS - Using correct column names
 // ============================================
 
 async function getFilteredManholes() {
     const params = new URLSearchParams();
-    if (currentFilters.suburb_nam && currentFilters.suburb_nam !== 'all') params.append('suburb', currentFilters.suburb_nam);
-    if (currentFilters.township && currentFilters.township !== 'all') params.append('township', currentFilters.township);
-    if (currentFilters.zone && currentFilters.zone !== 'all') params.append('zone', currentFilters.zone);
-    if (currentFilters.ward && currentFilters.ward !== 'all') params.append('ward', currentFilters.ward);
-    if (currentFilters.op_zone && currentFilters.op_zone !== 'all') params.append('op_zone', currentFilters.op_zone);
-    if (currentFilters.manhole_status !== 'all') params.append('status', currentFilters.manhole_status);
-    if (currentFilters.manhole_depth_min) params.append('depth_min', currentFilters.manhole_depth_min);
-    if (currentFilters.manhole_depth_max) params.append('depth_max', currentFilters.manhole_depth_max);
-    if (currentFilters.inspector !== 'all') params.append('inspector', currentFilters.inspector);
-    if (currentFilters.date_from) params.append('date_from', currentFilters.date_from);
-    if (currentFilters.date_to) params.append('date_to', currentFilters.date_to);
-    if (currentFilters.search_text) params.append('search', currentFilters.search_text);
+    
+    // Add all active filters - matches backend column names
+    if (currentFilters.suburb_nam && currentFilters.suburb_nam !== 'all') 
+        params.append('suburb', currentFilters.suburb_nam);
+    if (currentFilters.township && currentFilters.township !== 'all') 
+        params.append('township', currentFilters.township);
+    if (currentFilters.zone && currentFilters.zone !== 'all') 
+        params.append('zone', currentFilters.zone);
+    if (currentFilters.ward && currentFilters.ward !== 'all') 
+        params.append('ward', currentFilters.ward);
+    if (currentFilters.op_zone && currentFilters.op_zone !== 'all') 
+        params.append('op_zone', currentFilters.op_zone);
+    if (currentFilters.manhole_status !== 'all') 
+        params.append('status', currentFilters.manhole_status);
+    if (currentFilters.manhole_depth_min) 
+        params.append('depth_min', currentFilters.manhole_depth_min);
+    if (currentFilters.manhole_depth_max) 
+        params.append('depth_max', currentFilters.manhole_depth_max);
+    if (currentFilters.inspector !== 'all') 
+        params.append('inspector', currentFilters.inspector);
+    if (currentFilters.date_from) 
+        params.append('date_from', currentFilters.date_from);
+    if (currentFilters.date_to) 
+        params.append('date_to', currentFilters.date_to);
+    if (currentFilters.search_text) 
+        params.append('search', currentFilters.search_text);
+    
+    params.append('limit', 5000);
+    
+    console.log('Fetching manholes with params:', params.toString());
     
     try {
         const response = await fetch(`${API_BASE_URL}/manholes/list?${params.toString()}`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         currentData.manholes = data;
+        console.log(`✅ Filtered to ${data.length} manholes`);
         return data;
     } catch (error) {
         console.error('Error fetching manholes:', error);
@@ -187,24 +273,133 @@ async function getFilteredManholes() {
 
 async function getFilteredPipelines() {
     const params = new URLSearchParams();
-    if (currentFilters.suburb_nam && currentFilters.suburb_nam !== 'all') params.append('suburb', currentFilters.suburb_nam);
-    if (currentFilters.township && currentFilters.township !== 'all') params.append('township', currentFilters.township);
-    if (currentFilters.pipe_material !== 'all') params.append('material', currentFilters.pipe_material);
-    if (currentFilters.pipe_size !== 'all') params.append('size', currentFilters.pipe_size);
-    if (currentFilters.pipe_status !== 'all') params.append('status', currentFilters.pipe_status);
-    if (currentFilters.length_min) params.append('length_min', currentFilters.length_min);
-    if (currentFilters.length_max) params.append('length_max', currentFilters.length_max);
-    if (currentFilters.search_text) params.append('search', currentFilters.search_text);
+    
+    // Add all active filters - matches backend column names (pipe_mat, pipe_size, block_stat)
+    if (currentFilters.suburb_nam && currentFilters.suburb_nam !== 'all') 
+        params.append('suburb', currentFilters.suburb_nam);
+    if (currentFilters.township && currentFilters.township !== 'all') 
+        params.append('township', currentFilters.township);
+    if (currentFilters.pipe_material !== 'all') 
+        params.append('material', currentFilters.pipe_material);
+    if (currentFilters.pipe_size !== 'all') 
+        params.append('size', currentFilters.pipe_size);
+    if (currentFilters.pipe_status !== 'all') 
+        params.append('status', currentFilters.pipe_status);
+    if (currentFilters.length_min) 
+        params.append('length_min', currentFilters.length_min);
+    if (currentFilters.length_max) 
+        params.append('length_max', currentFilters.length_max);
+    if (currentFilters.search_text) 
+        params.append('search', currentFilters.search_text);
+    
+    params.append('limit', 5000);
+    
+    console.log('Fetching pipelines with params:', params.toString());
     
     try {
         const response = await fetch(`${API_BASE_URL}/pipelines/list?${params.toString()}`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         currentData.pipelines = data;
+        console.log(`✅ Filtered to ${data.length} pipelines`);
         return data;
     } catch (error) {
         console.error('Error fetching pipelines:', error);
         return [];
+    }
+}
+
+// ============================================
+// FILTER TRIGGER WITH LOADING STATES
+// ============================================
+
+async function triggerFilterChange() {
+    if (isFiltering) {
+        console.log('Filter already in progress, skipping...');
+        return;
+    }
+    
+    isFiltering = true;
+    showFilterLoading(true);
+    
+    try {
+        // Fetch both filtered datasets in parallel
+        const [manholes, pipelines] = await Promise.all([
+            getFilteredManholes(), 
+            getFilteredPipelines()
+        ]);
+        
+        // Dispatch custom event for map and list to update
+        document.dispatchEvent(new CustomEvent('filtersChanged', { 
+            detail: { 
+                manholes: manholes, 
+                pipelines: pipelines, 
+                filters: currentFilters,
+                manholeCount: manholes.length,
+                pipelineCount: pipelines.length,
+                totalCount: manholes.length + pipelines.length
+            }
+        }));
+        
+        console.log(`✅ Filter applied: ${manholes.length} manholes, ${pipelines.length} pipelines`);
+        
+        // Update UI with result count
+        updateFilterResultCount(manholes.length + pipelines.length);
+        
+    } catch (err) {
+        console.error('Error applying filters:', err);
+        showFilterError('Failed to apply filters. Please try again.');
+    } finally {
+        isFiltering = false;
+        showFilterLoading(false);
+    }
+}
+
+function showFilterLoading(show) {
+    const filterBtn = document.getElementById('mainFilterBtn');
+    const applyBtn = document.getElementById('applyFiltersBtn');
+    
+    if (filterBtn) {
+        if (show) {
+            filterBtn.innerHTML = '⏳ FILTERING...';
+            filterBtn.disabled = true;
+            filterBtn.style.opacity = '0.7';
+        } else {
+            updateFilterButtonText();
+            filterBtn.disabled = false;
+            filterBtn.style.opacity = '1';
+        }
+    }
+    
+    if (applyBtn) {
+        if (show) {
+            applyBtn.innerHTML = '⏳ APPLYING...';
+            applyBtn.disabled = true;
+        } else {
+            applyBtn.innerHTML = '✅ APPLY';
+            applyBtn.disabled = false;
+        }
+    }
+}
+
+function showFilterError(message) {
+    const errorDiv = document.getElementById('filterError');
+    if (errorDiv) {
+        errorDiv.textContent = message;
+        errorDiv.style.display = 'block';
+        setTimeout(() => {
+            errorDiv.style.display = 'none';
+        }, 3000);
+    } else {
+        console.error(message);
+    }
+}
+
+function updateFilterResultCount(count) {
+    const resultSpan = document.getElementById('filterResultCount');
+    if (resultSpan) {
+        resultSpan.innerHTML = `📊 ${count} features shown`;
+        resultSpan.style.display = 'inline-block';
     }
 }
 
@@ -216,7 +411,8 @@ function exportToJSON() {
     const exportData = { 
         filters: currentFilters, 
         data: currentData, 
-        exported_at: new Date().toISOString() 
+        exported_at: new Date().toISOString(),
+        total_features: currentData.manholes.length + currentData.pipelines.length
     };
     const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -225,6 +421,7 @@ function exportToJSON() {
     a.download = `sewer_export_${new Date().toISOString().slice(0,19)}.json`;
     a.click();
     URL.revokeObjectURL(url);
+    console.log('Exported data to JSON');
 }
 
 function exportToCSV() {
@@ -245,6 +442,7 @@ function exportToCSV() {
     a.download = `sewer_export_${new Date().toISOString().slice(0,19)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+    console.log('Exported data to CSV');
 }
 
 function exportToPDF() { 
@@ -268,6 +466,9 @@ function renderModal() {
                     <button id="closeFilterModal" class="close-modal">✕</button>
                 </div>
                 <div class="filter-modal-body">
+                    <!-- ERROR DISPLAY -->
+                    <div id="filterError" class="filter-error" style="display: none; background: #dc3545; color: white; padding: 8px; border-radius: 4px; margin-bottom: 10px;"></div>
+                    
                     <!-- EXPORT SECTION -->
                     <div class="filter-section-group">
                         <h4>📤 EXPORT DATA</h4>
@@ -328,7 +529,7 @@ function renderModal() {
                             <label>Blockage Status</label>
                             <select id="manholeStatusSelect" class="filter-input">
                                 <option value="all">ALL</option>
-                                ${filterData.manhole_statuses.map(s => `<option value="${s}">${s.toUpperCase()}</option>`).join('')}
+                                ${filterData.manhole_statuses.map(s => `<option value="${s}">${String(s).toUpperCase()}</option>`).join('')}
                             </select>
                         </div>
                         <div class="filter-row">
@@ -364,7 +565,7 @@ function renderModal() {
                             <label>Blockage Status</label>
                             <select id="pipeStatusSelect" class="filter-input">
                                 <option value="all">ALL</option>
-                                ${filterData.pipe_statuses.map(s => `<option value="${s}">${s.toUpperCase()}</option>`).join('')}
+                                ${filterData.pipe_statuses.map(s => `<option value="${s}">${String(s).toUpperCase()}</option>`).join('')}
                             </select>
                         </div>
                         <div class="filter-row">
@@ -409,6 +610,7 @@ function renderModal() {
                     </div>
                 </div>
                 <div class="filter-modal-footer">
+                    <span id="filterResultCount" class="filter-result-count" style="display: none;"></span>
                     <button id="resetFiltersBtn" class="reset-btn">🗑️ RESET</button>
                     <button id="applyFiltersBtn" class="apply-btn">✅ APPLY</button>
                 </div>
@@ -567,18 +769,6 @@ function resetFilters() {
     updateCascadingOptions(null);
 }
 
-async function triggerFilterChange() {
-    try {
-        const [manholes, pipelines] = await Promise.all([getFilteredManholes(), getFilteredPipelines()]);
-        document.dispatchEvent(new CustomEvent('filtersChanged', { 
-            detail: { manholes, pipelines, filters: currentFilters, count: manholes.length + pipelines.length }
-        }));
-        console.log(`Filter applied: ${manholes.length} manholes, ${pipelines.length} pipelines`);
-    } catch (err) {
-        console.error('Error applying filters:', err);
-    }
-}
-
 // ============================================
 // EVENT HANDLERS
 // ============================================
@@ -654,5 +844,6 @@ export default {
     exportToJSON,
     exportToCSV,
     exportToPDF,
-    exportToSHP
+    exportToSHP,
+    triggerFilterChange
 };
